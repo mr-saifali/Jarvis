@@ -20,6 +20,7 @@ class JarvisHeartbeatWorker(
     override suspend fun doWork(): Result {
         return try {
             val config = JarvisConfig(applicationContext)
+            if (config.pairingPaused) return Result.success()
             val client = JarvisApiClient(config)
             val executor = DeviceActionExecutor(applicationContext)
             val commands = client.sendHeartbeat(JSONObject(), JSONObject())
@@ -27,6 +28,8 @@ class JarvisHeartbeatWorker(
                 val (status, resultActions) = executor.executeActions(cmd.actions)
                 client.ackCommand(cmd.id, status, "Executed via WorkManager", resultActions)
             }
+            Result.success()
+        } catch (_: com.jarvis.agent.data.PairingRequired) {
             Result.success()
         } catch (_: Exception) {
             Result.retry()

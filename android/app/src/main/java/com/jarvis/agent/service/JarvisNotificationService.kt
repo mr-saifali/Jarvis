@@ -78,11 +78,14 @@ class JarvisNotificationService : NotificationListenerService() {
         }
 
         val config = JarvisConfig(applicationContext)
+        if (config.pairingPaused) return
         val client = JarvisApiClient(config)
         scope.launch {
             try {
                 client.postNotification(appLabel, title, text)
                 JarvisLogStore.append("Forwarded notification [$appLabel] $title")
+            } catch (_: com.jarvis.agent.data.PairingRequired) {
+                // The shared pairing gate pauses forwarding until explicit re-registration.
             } catch (e: Exception) {
                 JarvisLogStore.append("Notification forward error: ${e.message}")
             }

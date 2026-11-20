@@ -23,6 +23,21 @@ object JarvisLogStore {
 class JarvisConfig(context: Context) {
     private val prefs = context.getSharedPreferences("jarvis_agent_prefs", Context.MODE_PRIVATE)
 
+    companion object { private val pairingLock = Any() }
+    val pairingPaused: Boolean get() = prefs.getBoolean("pairing_paused", false) || brainUrl.isBlank() || pairingToken.isBlank()
+    val pairingGeneration: Long get() = prefs.getLong("pairing_generation", 0L)
+    fun beginPairing(): Long = synchronized(pairingLock) {
+        val generation = pairingGeneration + 1
+        prefs.edit().putLong("pairing_generation", generation).putBoolean("pairing_paused", true).apply()
+        generation
+    }
+    fun pairingResult(generation: Long, accepted: Boolean) = synchronized(pairingLock) {
+        if (generation == pairingGeneration) {
+            if (!accepted && !pairingPaused) JarvisLogStore.append("HTTP 401: background requests paused. Check device pairing in Setup.")
+            prefs.edit().putBoolean("pairing_paused", !accepted).apply()
+        }
+    }
+
     private fun ackPrefix() = "ack:$brainUrl:$deviceId:"
     fun saveAck(id: String, json: String) {
         check(prefs.edit().putString(ackPrefix() + id, json).commit())

@@ -113,6 +113,7 @@ class JarvisForegroundService : Service() {
         pollJob = scope.launch {
             JarvisLogStore.append("Foreground bridge online -> ${config.brainUrl}")
             while (isActive) {
+                if (config.pairingPaused) { delay(3_000L); continue }
                 var sleepMs = 3_000L
                 try {
                     val telemetry = collectTelemetry()
@@ -123,6 +124,8 @@ class JarvisForegroundService : Service() {
                         val (status, resultActions) = executor.executeActions(cmd.actions, config.voiceFeedback)
                         client.ackCommand(cmd.id, status, "Executed on Android device", resultActions)
                     }
+                } catch (_: com.jarvis.agent.data.PairingRequired) {
+                    status("Pairing required. Open Setup and tap Save & Connect.")
                 } catch (e: Exception) {
                     JarvisLogStore.append("Heartbeat error: ${e.message}")
                     sleepMs = 8_000L

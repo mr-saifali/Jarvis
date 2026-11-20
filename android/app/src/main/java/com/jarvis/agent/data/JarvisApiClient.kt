@@ -17,9 +17,13 @@ data class BrainCommand(
     val actions: JSONArray
 )
 
+class PairingRequired : Exception("Check the Brain URL and this phone’s device token in Setup, then tap Save & Connect.")
+
 class JarvisApiClient(private val config: JarvisConfig) {
 
-    private fun postJson(path: String, body: JSONObject): JSONObject {
+    private fun postJson(path: String, body: JSONObject, registration: Long? = null): JSONObject {
+        val generation = registration ?: config.pairingGeneration
+        if (registration == null && config.pairingPaused) throw PairingRequired()
         val base = config.brainUrl.trimEnd('/')
         val conn = (URL("$base$path").openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -30,16 +34,19 @@ class JarvisApiClient(private val config: JarvisConfig) {
             setRequestProperty("X-Jarvis-Token", config.pairingToken)
         }
 
-        OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { writer ->
-            writer.write(body.toString())
-        }
-
-        val stream = if (conn.responseCode in 200..299) conn.inputStream else conn.errorStream
-        val text = BufferedReader(InputStreamReader(stream ?: conn.inputStream)).use { it.readText() }
-        if (conn.responseCode !in 200..299) {
-            throw RuntimeException("HTTP ${conn.responseCode}: $text")
-        }
-        return if (text.isBlank()) JSONObject() else JSONObject(text)
+        try {
+            OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body.toString()) }
+            val code = conn.responseCode
+            if (code == 401) {
+                config.pairingResult(generation, false)
+                throw PairingRequired()
+            }
+            if (code !in 200..299) throw RuntimeException("HTTP $code")
+            val text = BufferedReader(InputStreamReader(conn.inputStream)).use { it.readText() }
+            val response = if (text.isBlank()) JSONObject() else JSONObject(text)
+            if (registration != null) config.pairingResult(generation, true)
+            return response
+        } finally { conn.disconnect() }
     }
 
     suspend fun registerDevice(telemetry: JSONObject, capabilities: JSONObject): JSONObject =
@@ -51,7 +58,7 @@ class JarvisApiClient(private val config: JarvisConfig) {
                 put("capabilities", capabilities)
                 put("telemetry", telemetry)
             }
-            postJson("/api/devices/register", body)
+            postJson("/api/devices/register", body, config.beginPairing())
         }
 
     suspend fun sendHeartbeat(telemetry: JSONObject, capabilities: JSONObject): List<BrainCommand> =

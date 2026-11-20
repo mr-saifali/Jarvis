@@ -302,10 +302,10 @@ fun JarvisScreen(config: JarvisConfig) {
                     Button(onClick = {
                         config.brainUrl = brainUrl
                         config.pairingToken = pairingToken
-                        JarvisForegroundService.start(context)
                         scope.launch {
                             try {
                                 JarvisApiClient(config).registerDevice(JSONObject(), JSONObject())
+                                JarvisForegroundService.start(context)
                                 statusText = "Connected & Heartbeat Active (3s)"
                                 JarvisLogStore.append("Paired with $brainUrl")
                                 if (voiceFeedback) {
