@@ -1,0 +1,24 @@
+# Dependencies & local data
+node_modules/
+brain/data/
+.env
+.env.*
+!.env.example
+
+# Vercel
+.vercel/
+
+# Android / Gradle build & IDE artifacts
+android/.gradle/
+android/local.properties
+android/**/build/
+android/.idea/
+*.iml
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# OS / Logs
+.DS_Store
+*.log

@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>J.A.R.V.I.S. — Android AI Agent & Automation Hub</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="arc-reactor" aria-hidden="true">
+          <div class="arc-core"></div>
+        </div>
+        <div>
+          <h1>J.A.R.V.I.S. <span class="badge-beta">ANDROID CORE</span></h1>
+          <p class="subtitle">Voice Command &bull; Accessibility UI Agent &bull; Background Scheduler</p>
+        </div>
+      </div>
+
+      <div class="topbar-controls">
+        <div class="status-pill" id="connection-pill">
+          <span class="dot online"></span>
+          <span id="connection-label">Brain Online</span>
+        </div>
+
+        <label class="toggle-chip" title="Require manual confirmation before SMS, phone calls, or sending messages">
+          <input type="checkbox" id="safety-toggle" checked />
+          <span>Confirm Sensitive Actions</span>
+        </label>
+
+        <button class="btn btn-outline" id="btn-open-connect">Connect Real Phone</button>
+        <button class="btn btn-outline" id="btn-open-settings">Brain Settings</button>
+      </div>
+    </header>
+
+    <!-- Main 2-column Workspace -->
+    <main class="main-grid">
+      <!-- Left: Command Center + Tabs -->
+      <section class="left-panel">
+        <!-- Command Bar -->
+        <div class="card command-card">
+          <div class="card-header">
+            <h2>Command Jarvis</h2>
+            <span class="meta-text" id="target-device-label">Target: Android Phone Simulator</span>
+          </div>
+
+          <form id="command-form" class="command-form">
+            <button type="button" id="btn-mic" class="mic-btn" title="Speak command (Browser Speech API)">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/>
+                <line x1="8" y1="23" x2="16" y2="23"/>
+              </svg>
+            </button>
+            <input
+              type="text"
+              id="command-input"
+              placeholder='Try: "Open WhatsApp and message Mom that I am on my way" or "In 30 seconds set brightness to 25%"'
+              autocomplete="off"
+            />
+            <button type="submit" class="btn btn-primary">Execute</button>
+          </form>
+
+          <div class="preset-chips">
+            <button class="chip" data-cmd="Open WhatsApp and message Mom that I will be home in 15 minutes">WhatsApp Msg</button>
+            <button class="chip" data-cmd="Turn on Do Not Disturb and set brightness to 30%">Night Mode</button>
+            <button class="chip" data-cmd="Set an alarm for 6:30 AM">6:30 AM Alarm</button>
+            <button class="chip" data-cmd="In 20 seconds turn off Do Not Disturb and notify me Ready for focus">Schedule in 20s</button>
+            <button class="chip" data-cmd="Every weekday at 8:30 AM summarize unread notifications and save to Notion">Cron 8:30 AM</button>
+            <button class="chip" data-cmd="When I get a WhatsApp message from Mom, auto-reply In a meeting, will call soon">Event Rule</button>
+          </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs-bar">
+          <button class="tab-btn active" data-tab="timeline">Execution Feed <span class="count" id="count-cmds">0</span></button>
+          <button class="tab-btn" data-tab="schedules">Background Schedules <span class="count" id="count-tasks">0</span></button>
+          <button class="tab-btn" data-tab="rules">Event Rules <span class="count" id="count-rules">0</span></button>
+          <button class="tab-btn" data-tab="vault">Cloud Vault (Notion/Drive) <span class="count" id="count-vault">0</span></button>
+          <button class="tab-btn" data-tab="logs">Live Telemetry</button>
+        </div>
+
+        <!-- Tab Contents -->
+        <div class="tab-content active" id="tab-timeline">
+          <div id="commands-list" class="stack-list"></div>
+        </div>
+
+        <div class="tab-content" id="tab-schedules">
+          <div class="section-note">Background jobs run automatically on schedule via Jarvis Scheduler + Android WorkManager/AlarmManager.</div>
+          <div id="tasks-list" class="stack-list"></div>
+        </div>
+
+        <div class="tab-content" id="tab-rules">
+          <div class="section-note">Event rules watch phone telemetry &amp; Android NotificationListener events in real time.</div>
+          <div id="rules-list" class="stack-list"></div>
+        </div>
+
+        <div class="tab-content" id="tab-vault">
+          <div class="section-note">Summaries and backups generated by Jarvis tasks, ready to sync with your Notion &amp; Google Drive connectors.</div>
+          <div id="vault-list" class="stack-list"></div>
+        </div>
+
+        <div class="tab-content" id="tab-logs">
+          <div id="logs-list" class="logs-terminal"></div>
+        </div>
+      </section>
+
+      <!-- Right: Live Android Device Simulator & Telemetry -->
+      <aside class="right-panel">
+        <div class="card phone-panel">
+          <div class="card-header">
+            <h2>Live Android Device Bridge</h2>
+            <select id="device-selector" class="select-sm"></select>
+          </div>
+
+          <!-- Interactive Virtual Android Phone -->
+          <div class="phone-frame" id="phone-frame">
+            <div class="phone-bezel">
+              <div class="phone-notch"></div>
+              <div class="phone-status-bar">
+                <span id="sim-clock">12:00</span>
+                <div class="phone-status-icons">
+                  <span id="sim-dnd-badge" class="mini-badge hidden">DND</span>
+                  <span id="sim-wifi-label">Wi-Fi</span>
+                  <span id="sim-bat-label">78%</span>
+                </div>
+              </div>
+
+              <!-- Screen brightness overlay -->
+              <div class="phone-screen" id="sim-screen">
+                <div class="brightness-veil" id="sim-brightness-veil"></div>
+
+                <!-- Lockscreen overlay -->
+                <div class="lockscreen-overlay hidden" id="sim-lockscreen">
+                  <div class="lock-icon">🔒</div>
+                  <div class="lock-time" id="sim-lock-time">12:00</div>
+                  <p>Device Locked</p>
+                  <small>UI-tap actions pause until unlocked; background &amp; cloud actions still run.</small>
+                  <button class="btn btn-sm btn-primary" id="btn-sim-unlock">Unlock Phone</button>
+                </div>
+
+                <!-- Active App Header -->
+                <div class="sim-app-header">
+                  <span class="app-pill" id="sim-app-name">Launcher</span>
+                  <span class="agent-badge" id="sim-agent-status">Accessibility Ready</span>
+                </div>
+
+                <!-- Dynamic App Screen -->
+                <div class="sim-screen-body" id="sim-screen-body">
+                  <div class="app-grid">
+                    <div class="app-tile" data-open="WhatsApp">WhatsApp</div>
+                    <div class="app-tile" data-open="Spotify">Spotify</div>
+                    <div class="app-tile" data-open="Settings">Settings</div>
+                    <div class="app-tile" data-open="Gmail">Gmail</div>
+                    <div class="app-tile" data-open="Clock">Clock</div>
+                    <div class="app-tile" data-open="Notion">Notion</div>
+                  </div>
+                </div>
+
+                <!-- Live Step Toast inside phone -->
+                <div class="sim-action-toast hidden" id="sim-action-toast"></div>
+
+                <!-- Android Nav Bar -->
+                <div class="phone-navbar">
+                  <button type="button" id="sim-btn-back" title="Back">&#9664;</button>
+                  <button type="button" id="sim-btn-home" title="Home">&#9679;</button>
+                  <button type="button" id="sim-btn-lock" title="Lock Screen">&#9632;</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Telemetry & Event Triggers -->
+          <div class="sim-controls">
+            <div class="control-row">
+              <label>Battery: <strong id="ctrl-bat-val">78%</strong></label>
+              <input type="range" id="ctrl-battery" min="5" max="100" value="78" />
+            </div>
+            <div class="control-row">
+              <label>Brightness: <strong id="ctrl-bright-val">65%</strong></label>
+              <input type="range" id="ctrl-brightness" min="10" max="100" value="65" />
+            </div>
+            <div class="sim-btn-grid">
+              <button class="btn btn-sm btn-outline" id="btn-sim-low-bat">Drop Battery to 15%</button>
+              <button class="btn btn-sm btn-outline" id="btn-sim-whatsapp">Simulate WhatsApp (Mom)</button>
+              <button class="btn btn-sm btn-outline" id="btn-sim-wifi">Switch Wi-Fi: Office-5G</button>
+              <button class="btn btn-sm btn-outline" id="btn-sim-toggle-lock">Toggle Lock Screen</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Modal: Connect Real Android Phone -->
+  <div class="modal-backdrop hidden" id="modal-connect">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Connect Your Real Android Phone</h3>
+        <button class="close-btn" data-close="modal-connect">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Use <strong>either</strong> the included native Kotlin Android app (<code>android/</code>) <strong>or</strong> connect in 5 minutes via MacroDroid / Termux webhooks:</p>
+
+        <div class="info-box">
+          <div><strong>Server Endpoint:</strong> <code id="connect-origin"></code></div>
+          <div><strong>Pairing Token:</strong> <code id="connect-token"></code></div>
+        </div>
+
+        <h4>Option A: Native Kotlin Android Agent (Full Accessibility + Background Control)</h4>
+        <ol>
+          <li>Open <code>android/</code> in Android Studio (or push to GitHub to auto-build the APK via <code>.github/workflows/build-apk.yml</code>).</li>
+          <li>Install the APK on your phone and grant <strong>Accessibility Service</strong>, <strong>Notification Access</strong>, and <strong>Unrestricted Battery</strong>.</li>
+          <li>Paste the Server URL &amp; Pairing Token above into the Jarvis app.</li>
+        </ol>
+
+        <h4>Option B: Test Today with MacroDroid / Termux (No APK Build Needed)</h4>
+        <pre class="code-block" id="connect-curl"></pre>
+        <p class="small-muted">Note: For 24/7 phone access over mobile data, deploy <code>brain/</code> (or Vercel + Supabase using <code>supabase/schema.sql</code>) so your phone has a permanent public HTTPS URL.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Brain Settings & LLM Config -->
+  <div class="modal-backdrop hidden" id="modal-settings">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Jarvis Brain Settings</h3>
+        <button class="close-btn" data-close="modal-settings">&times;</button>
+      </div>
+      <form id="settings-form" class="modal-body">
+        <label class="field">
+          <span>Timezone (for Cron Schedules)</span>
+          <input type="text" id="set-timezone" placeholder="Asia/Kolkata" />
+        </label>
+
+        <div class="divider"></div>
+        <h4>Optional Live LLM Planner (OpenAI / Gemini / OpenRouter / Groq)</h4>
+        <p class="small-muted">Without an API key, Jarvis uses its fast built-in deterministic planner. Enable this for open-ended reasoning.</p>
+
+        <label class="toggle-chip">
+          <input type="checkbox" id="set-llm-enabled" />
+          <span>Enable External LLM Reasoning</span>
+        </label>
+
+        <label class="field">
+          <span>Chat Completions Base URL</span>
+          <input type="text" id="set-llm-url" placeholder="https://api.openai.com/v1/chat/completions" />
+        </label>
+
+        <label class="field">
+          <span>Model Name</span>
+          <input type="text" id="set-llm-model" placeholder="gpt-4o-mini" />
+        </label>
+
+        <label class="field">
+          <span>API Key (stored locally in brain/data/db.json)</span>
+          <input type="password" id="set-llm-key" placeholder="sk-..." />
+        </label>
+
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary">Save Settings</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

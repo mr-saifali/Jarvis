@@ -1,0 +1,52 @@
+name: Build Jarvis Android APK & Test Brain
+
+on:
+  push:
+    branches: [ main, "arena/**" ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test-brain:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run Jarvis Brain tests
+        working-directory: brain
+        run: npm test
+
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Build Debug APK
+        working-directory: android
+        run: gradle assembleDebug --no-daemon
+
+      - name: Upload Jarvis Agent Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-agent-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
