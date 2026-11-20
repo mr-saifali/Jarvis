@@ -72,5 +72,5 @@ jobs:
           else
             gh release create latest jarvis-agent.apk \
               --title "J.A.R.V.I.S. Android APK (Latest)" \
-              --notes "Signed Android APK build from main. Download jarvis-agent.apk, install on your Android phone, and connect to https://jarvis-brain-nu.vercel.app."
+              --notes "Signed Android APK build from main. Download jarvis-agent.apk, install on your Android phone, and connect to https://marcuss.vercel.app."
           fi
