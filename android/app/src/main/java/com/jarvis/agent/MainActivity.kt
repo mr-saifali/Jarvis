@@ -264,6 +264,7 @@ fun JarvisScreen(config: JarvisConfig) {
         }
 
         if (section == "Ask") item("tile-tip") { Text("Tip: add Ask Jarvis in Quick Settings to send commands from another app.", color = Color(0xFFB3C5DA)) }
+        if (section == "Setup") item("default-assistant") { com.jarvis.agent.quick.AssistantSetup() }
         // Cloud Brain Pairing Card
         if (section == "Setup") item("pair") {
             Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF0E1522))) {

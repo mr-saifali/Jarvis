@@ -1,3 +1,4 @@
+import {compoundRequest} from './flash-workflow.mjs';
 import { getZonedParts, matchesCronParts } from './scheduler.mjs';
 import { planDeterministic } from './planner.mjs';
 
@@ -73,6 +74,7 @@ export async function assistantPlan(store, settings, prompt, source, now = new D
   const routine = routines.find(r=>r.name===fold(run?.[1] || prompt));
   if (routine) return {kind:'command',summary:`Routine: ${routine.name}`, actions:routine.actions};
   if (run) throw problem(`Unknown routine: ${run[1]}`);
+  if (process.env.GEMINI_API_KEY && compoundRequest(prompt)) return null;
   const mapped=translated(prompt);
   return mapped!==prompt ? planDeterministic(mapped,now) : null;
 }

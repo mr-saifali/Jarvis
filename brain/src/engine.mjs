@@ -1,3 +1,4 @@
+import {parseLibraryCommand,applyLibraryCommand} from './automation-library.mjs';
 /**
  * J.A.R.V.I.S. Execution Engine (Simulator + Cloud Vault + Scheduler + Event Rules)
  */
@@ -31,6 +32,10 @@ export async function executeActionsForDevice(store, device, actions) {
   let blockedCount = 0;
 
   for (const action of actions) {
+    if (action.stopOnFailure && blockedCount) {
+      stepResults.push({...action,status:"skipped",detail:"Earlier workflow step blocked"});
+      continue;
+    }
     if (action.type === "summarize_notifications") {
       const notifs = await store.listNotifications(20);
       const unread = notifs.filter((n) => !n.read && n.device_id === device?.id);
@@ -81,6 +86,9 @@ export async function executeActionsForDevice(store, device, actions) {
       }
 
       switch (action.type) {
+        case "open_settings":
+          telemetry.activeApp = `Settings: ${action.panel}`;
+          break;
         case "open_app":
           telemetry.activeApp = action.app || "Launcher";
           break;
@@ -180,7 +188,7 @@ export async function executeActionsForDevice(store, device, actions) {
     actions: stepResults,
     status: isRealDeviceWithDeviceSteps
       ? "queued"
-      : blockedCount > 0 && blockedCount === actions.length
+      : blockedCount > 0 && (blockedCount === actions.length || actions.some(a=>a.stopOnFailure))
         ? "failed"
         : "completed",
     result_message: isRealDeviceWithDeviceSteps
@@ -194,6 +202,11 @@ export async function executeActionsForDevice(store, device, actions) {
 export async function dispatchCommand(store, { prompt, deviceId = "auto", source = "user", skipApproval = false }) {
   const settings = await store.getSettings();
   if (source === "device" && !(await store.getDevice(deviceId))) throw new Error("Register device first");
+  const recipe = parseLibraryCommand(prompt);
+  if (recipe) {
+    const target = recipe.verb === 'list' ? null : await resolveTargetDevice(store,deviceId);
+    return applyLibraryCommand(store,recipe,target?.id);
+  }
   const builtin = await assistantPlan(store, settings, prompt, source);
   const plan = builtin || await planCommand(prompt, settings.llm_config);
   if (plan.kind === "routine") return plan;
@@ -351,12 +364,12 @@ export async function tickScheduler(store, now = new Date()) {
   return fired;
 }
 
-export async function evaluateRules(store, eventType, payload, deviceId, now = new Date()) {
+export async function evaluateRules(store, eventType, payload, deviceId, now = new Date(), previous = null) {
   const rules = await store.listRules();
   const triggered = [];
 
   for (const rule of rules) {
-    if (!matchesRuleCondition(rule, eventType, payload, now)) continue;
+    if (!matchesRuleCondition(rule, eventType, payload, now, previous)) continue;
 
     const targetId =
       rule.target_device_id && rule.target_device_id !== "auto"
