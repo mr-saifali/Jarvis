@@ -1,9 +1,12 @@
-/* J.A.R.V.I.S. Control Center & Android Phone Simulator Frontend */
+/* J.A.R.V.I.S. Notion-Style Phone Control Workspace */
+
+const DEFAULT_APK_URL =
+  "https://github.com/mr-saifali/Jarvis/releases/download/latest/jarvis-agent.apk";
 
 const state = {
   data: null,
-  selectedDeviceId: "sim-pixel-9",
-  activeTab: "timeline",
+  selectedDeviceId: "auto",
+  activePage: "control",
   toastTimer: null
 };
 
@@ -22,7 +25,16 @@ function fmtTime(iso) {
   if (!iso) return "--:--";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "--:--";
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function showToast(msg) {
+  const el = $("#toast");
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.remove("hidden");
+  clearTimeout(state.toastTimer);
+  state.toastTimer = setTimeout(() => el.classList.add("hidden"), 3000);
 }
 
 async function api(path, options = {}) {
@@ -37,30 +49,95 @@ async function api(path, options = {}) {
   return json;
 }
 
-function showPhoneToast(msg) {
-  const toast = $("#sim-action-toast");
-  if (!toast) return;
-  toast.textContent = msg;
-  toast.classList.remove("hidden");
-  clearTimeout(state.toastTimer);
-  state.toastTimer = setTimeout(() => toast.classList.add("hidden"), 3200);
+function getRealDevices() {
+  return (state.data?.devices || []).filter((d) => d.type !== "simulator");
 }
 
 function getSelectedDevice() {
   const devices = state.data?.devices || [];
-  return devices.find((d) => d.id === state.selectedDeviceId) || devices[0] || null;
+  if (state.selectedDeviceId && state.selectedDeviceId !== "auto") {
+    const exact = devices.find((d) => d.id === state.selectedDeviceId);
+    if (exact) return exact;
+  }
+  const onlineReal = devices.find((d) => d.type !== "simulator" && d.online);
+  return onlineReal || devices.find((d) => d.type !== "simulator") || devices[0] || null;
 }
 
-function renderTopbar() {
+function syncApkLinks() {
+  const apkUrl = state.data?.apkUrl || DEFAULT_APK_URL;
+  $$(".apk-download-link").forEach((a) => {
+    a.setAttribute("href", apkUrl);
+  });
+}
+
+function renderDeviceUI() {
+  const devices = state.data?.devices || [];
+  const realDevices = getRealDevices();
+  const active = getSelectedDevice();
+
+  // Auto-prefer real device if user still has default "auto" or simulator when real device connects
+  const select = $("#device-selector");
+  if (select) {
+    const options = [
+      `<option value="auto" ${state.selectedDeviceId === "auto" ? "selected" : ""}>Auto (${
+        realDevices.length > 0 ? "Prefer Real Phone" : "Virtual Test Phone"
+      })</option>`,
+      ...devices.map(
+        (d) =>
+          `<option value="${esc(d.id)}" ${d.id === state.selectedDeviceId ? "selected" : ""}>${esc(
+            d.name
+          )} (${d.type === "simulator" ? "Test" : d.online ? "Online" : "Offline"})</option>`
+      )
+    ];
+    select.innerHTML = options.join("");
+  }
+
+  // Setup callout visibility: show prominently until a real phone is paired
+  const hasReal = realDevices.length > 0;
+  $("#setup-callout").classList.toggle("hidden", hasReal);
+  $("#real-phone-strip").classList.toggle("hidden", !active);
+
+  const onlinePill = $("#device-online-pill");
+  if (active) {
+    const isReal = active.type !== "simulator";
+    $("#active-device-summary").textContent = isReal
+      ? `Connected to ${active.name} (${active.model || "Android"})`
+      : "No real phone paired yet — running on Virtual Test Phone until you install the APK.";
+    onlinePill.textContent = active.online
+      ? isReal
+        ? "Phone Online"
+        : "Test Mode"
+      : "Phone Offline";
+    onlinePill.classList.toggle("online", Boolean(active.online && isReal));
+
+    const tel = active.telemetry || {};
+    $("#strip-name").textContent = active.name || "Android";
+    $("#strip-battery").textContent = typeof tel.battery === "number" ? `${tel.battery}%` : "--%";
+    $("#strip-brightness").textContent =
+      typeof tel.brightness === "number" ? `${tel.brightness}%` : "--%";
+    $("#strip-dnd").textContent = tel.dnd ? "On" : "Off";
+    $("#strip-lock").textContent = tel.locked ? "Locked" : "Unlocked";
+
+    if (typeof tel.brightness === "number") {
+      $("#quick-brightness").value = tel.brightness;
+      $("#quick-bright-val").textContent = `${tel.brightness}%`;
+    }
+  }
+}
+
+function renderHeaderAndConnectInfo() {
   const settings = state.data?.settings;
   if (!settings) return;
+
   $("#safety-toggle").checked = Boolean(settings.confirm_sensitive_actions);
   $("#connection-label").textContent = "Brain Online";
-  $("#connection-pill .dot").classList.add("online");
+  $("#status-dot").classList.add("online");
+  $("#status-dot").classList.remove("offline");
 
-  // Populate Connect modal info
   const origin = window.location.origin;
   const token = settings.pairing_token || "jarvis-d4d0cd67";
+  $("#inline-origin").textContent = origin;
+  $("#inline-token").textContent = token;
   $("#connect-origin").textContent = origin;
   $("#connect-token").textContent = token;
   $("#connect-curl").textContent =
@@ -70,154 +147,42 @@ function renderTopbar() {
   -d '{"deviceId":"my-phone","name":"My Android","model":"Android","telemetry":{"battery":88,"wifi":"Home-5G"}}'`;
 }
 
-function renderDeviceSelector() {
-  const devices = state.data?.devices || [];
-  const select = $("#device-selector");
-  if (!devices.some((d) => d.id === state.selectedDeviceId) && devices[0]) {
-    state.selectedDeviceId = devices[0].id;
-  }
-  select.innerHTML = devices
-    .map(
-      (d) =>
-        `<option value="${esc(d.id)}" ${d.id === state.selectedDeviceId ? "selected" : ""}>${esc(
-          d.name
-        )} (${d.online ? "Online" : "Offline"})</option>`
-    )
-    .join("");
-
-  const active = getSelectedDevice();
-  $("#target-device-label").textContent = `Target: ${active ? active.name : "Android Phone Simulator"}`;
-}
-
-function renderPhoneSimulator() {
-  const device = getSelectedDevice();
-  const tel = device?.telemetry || {};
-
-  const nowStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  $("#sim-clock").textContent = nowStr;
-  $("#sim-lock-time").textContent = nowStr;
-
-  const battery = typeof tel.battery === "number" ? tel.battery : 78;
-  const brightness = typeof tel.brightness === "number" ? tel.brightness : 65;
-  const wifi = tel.wifi || "Home-5G";
-  const dnd = Boolean(tel.dnd);
-  const locked = Boolean(tel.locked);
-  const activeApp = tel.activeApp || "Launcher";
-
-  $("#sim-bat-label").textContent = `${battery}%`;
-  $("#sim-wifi-label").textContent = wifi;
-  $("#sim-dnd-badge").classList.toggle("hidden", !dnd);
-  $("#sim-lockscreen").classList.toggle("hidden", !locked);
-
-  $("#ctrl-battery").value = battery;
-  $("#ctrl-bat-val").textContent = `${battery}%`;
-  $("#ctrl-brightness").value = brightness;
-  $("#ctrl-bright-val").textContent = `${brightness}%`;
-
-  const veilOpacity = Math.max(0, Math.min(0.75, (100 - brightness) / 115));
-  $("#sim-brightness-veil").style.opacity = veilOpacity.toFixed(2);
-
-  $("#sim-app-name").textContent = activeApp;
-  $("#sim-agent-status").textContent =
-    device?.type === "simulator" ? "Accessibility Ready" : device?.online ? "Live Bridge" : "Offline";
-
-  const body = $("#sim-screen-body");
-  const msgs = (tel.screenMessages || []).filter(
-    (m) => !activeApp || activeApp === "Launcher" || m.app === activeApp
-  );
-
-  if (activeApp === "Launcher") {
-    body.innerHTML = `
-      <div class="app-grid">
-        <div class="app-tile" data-open="WhatsApp">WhatsApp</div>
-        <div class="app-tile" data-open="Spotify">Spotify</div>
-        <div class="app-tile" data-open="Settings">Settings</div>
-        <div class="app-tile" data-open="Gmail">Gmail</div>
-        <div class="app-tile" data-open="Clock">Clock</div>
-        <div class="app-tile" data-open="Notion">Notion</div>
-      </div>
-    `;
-  } else if (activeApp === "WhatsApp") {
-    const recent = msgs.slice(-5);
-    body.innerHTML =
-      recent.length > 0
-        ? recent
-            .map(
-              (m) =>
-                `<div class="sim-chat-bubble"><strong>${esc(m.from)} → ${esc(
-                  m.to
-                )}:</strong><br/>${esc(m.text)}</div>`
-            )
-            .join("")
-        : `<div class="sim-chat-bubble">WhatsApp open. Ready for Accessibility UI automation.</div>`;
-  } else if (activeApp === "Clock") {
-    const alarms = tel.alarms || [];
-    body.innerHTML =
-      alarms.length > 0
-        ? alarms
-            .map(
-              (a) =>
-                `<div class="sim-chat-bubble">⏰ <strong>${esc(a.time)}</strong> — ${esc(
-                  a.label || "Alarm"
-                )}</div>`
-            )
-            .join("")
-        : `<div class="sim-chat-bubble">No alarms configured yet.</div>`;
-  } else if (activeApp === "Settings") {
-    body.innerHTML = `
-      <div class="sim-chat-bubble"><strong>Do Not Disturb:</strong> ${dnd ? "ON" : "OFF"}</div>
-      <div class="sim-chat-bubble"><strong>Brightness:</strong> ${brightness}%</div>
-      <div class="sim-chat-bubble"><strong>Wi-Fi:</strong> ${esc(wifi)}</div>
-      <div class="sim-chat-bubble"><strong>Battery Saver:</strong> ${tel.batterySaver ? "ON" : "OFF"}</div>
-    `;
-  } else {
-    body.innerHTML = `<div class="sim-chat-bubble"><strong>${esc(
-      activeApp
-    )}</strong> is active in foreground.</div>`;
-  }
-}
-
 function renderCommands() {
   const commands = state.data?.commands || [];
   $("#count-cmds").textContent = commands.length;
   const list = $("#commands-list");
   if (commands.length === 0) {
-    list.innerHTML = `<div class="item-card"><div class="item-sub">No commands executed yet. Type a command above or click a preset chip!</div></div>`;
+    list.innerHTML = `<div class="doc-row"><div class="doc-sub">No commands yet. Use the bar above or tap any quick control!</div></div>`;
     return;
   }
 
   list.innerHTML = commands
     .map((cmd) => {
       const steps = (cmd.actions || [])
-        .map(
-          (a) =>
-            `<li class="step-row"><span>${esc(a.label || a.type)}</span><span>${esc(
-              a.status || cmd.status
-            )}</span></li>`
-        )
+        .map((a) => `<span class="step-pill">${esc(a.label || a.type)} (${esc(a.status || cmd.status)})</span>`)
         .join("");
 
-      const approvalBtns =
+      const approvals =
         cmd.status === "awaiting_approval"
-          ? `<div class="action-row">
-              <button class="btn btn-sm btn-success" data-approve="${esc(cmd.id)}">Approve & Execute</button>
+          ? `<div class="row-actions">
+              <button class="btn btn-sm btn-success" data-approve="${esc(cmd.id)}">Approve &amp; Run</button>
               <button class="btn btn-sm btn-danger" data-cancel="${esc(cmd.id)}">Cancel</button>
              </div>`
           : "";
 
       return `
-        <div class="item-card">
-          <div class="item-top">
+        <div class="doc-row">
+          <div class="doc-row-top">
             <div>
-              <div class="item-title">${esc(cmd.prompt)}</div>
-              <div class="item-sub">${esc(cmd.device_name || cmd.device_id)} &bull; ${esc(
-                cmd.source
-              )} &bull; ${fmtTime(cmd.created_at)} &bull; ${esc(cmd.result_message || "")}</div>
+              <div class="doc-title">${esc(cmd.prompt)}</div>
+              <div class="doc-sub">${esc(cmd.device_name || cmd.device_id)} &bull; ${fmtTime(
+        cmd.created_at
+      )} &bull; ${esc(cmd.result_message || "")}</div>
             </div>
-            <span class="status-tag tag-${esc(cmd.status)}">${esc(cmd.status)}</span>
+            <span class="badge badge-${esc(cmd.status)}">${esc(cmd.status.replace("_", " "))}</span>
           </div>
-          ${steps ? `<ul class="step-list">${steps}</ul>` : ""}
-          ${approvalBtns}
+          ${steps ? `<div class="step-pills">${steps}</div>` : ""}
+          ${approvals}
         </div>
       `;
     })
@@ -229,30 +194,30 @@ function renderTasks() {
   $("#count-tasks").textContent = tasks.length;
   const list = $("#tasks-list");
   if (tasks.length === 0) {
-    list.innerHTML = `<div class="item-card"><div class="item-sub">No background schedules yet. Try "In 20 seconds turn off Do Not Disturb" or "Every weekday at 8:30 AM...".</div></div>`;
+    list.innerHTML = `<div class="doc-row"><div class="doc-sub">No scheduled tasks yet. Create one above!</div></div>`;
     return;
   }
 
   list.innerHTML = tasks
     .map((t) => {
-      const schedInfo =
+      const sched =
         t.schedule_type === "cron"
           ? `Cron: ${t.cron_expr}`
           : t.schedule_type === "interval"
             ? `Every ${t.interval_seconds}s`
             : `Once at ${fmtTime(t.run_at)}`;
       return `
-        <div class="item-card">
-          <div class="item-top">
+        <div class="doc-row">
+          <div class="doc-row-top">
             <div>
-              <div class="item-title">${esc(t.name)}</div>
-              <div class="item-sub">${esc(schedInfo)} &bull; Runs: ${t.run_count || 0}</div>
+              <div class="doc-title">${esc(t.name)}</div>
+              <div class="doc-sub">${esc(sched)} &bull; Runs: ${t.run_count || 0}</div>
             </div>
-            <span class="status-tag ${t.enabled ? "tag-completed" : "tag-cancelled"}">${
+            <span class="badge ${t.enabled ? "badge-completed" : "badge-cancelled"}">${
         t.enabled ? "active" : "paused"
       }</span>
           </div>
-          <div class="action-row">
+          <div class="row-actions">
             <button class="btn btn-sm btn-outline" data-toggle-task="${esc(t.id)}">${
         t.enabled ? "Pause" : "Resume"
       }</button>
@@ -269,34 +234,34 @@ function renderRules() {
   $("#count-rules").textContent = rules.length;
   const list = $("#rules-list");
   if (rules.length === 0) {
-    list.innerHTML = `<div class="item-card"><div class="item-sub">No event rules yet. Try "When I get a WhatsApp message from Mom, auto-reply In a meeting".</div></div>`;
+    list.innerHTML = `<div class="doc-row"><div class="doc-sub">No automation rules yet. Create one above!</div></div>`;
     return;
   }
 
   list.innerHTML = rules
-    .map((r) => {
-      return `
-        <div class="item-card">
-          <div class="item-top">
-            <div>
-              <div class="item-title">${esc(r.name)}</div>
-              <div class="item-sub">Trigger: ${esc(r.event_type)} &bull; Condition: ${esc(
+    .map(
+      (r) => `
+      <div class="doc-row">
+        <div class="doc-row-top">
+          <div>
+            <div class="doc-title">${esc(r.name)}</div>
+            <div class="doc-sub">Trigger: ${esc(r.event_type)} &bull; ${esc(
         JSON.stringify(r.condition)
       )} &bull; Hits: ${r.hit_count || 0}</div>
-            </div>
-            <span class="status-tag ${r.enabled ? "tag-completed" : "tag-cancelled"}">${
+          </div>
+          <span class="badge ${r.enabled ? "badge-completed" : "badge-cancelled"}">${
         r.enabled ? "active" : "paused"
       }</span>
-          </div>
-          <div class="action-row">
-            <button class="btn btn-sm btn-outline" data-toggle-rule="${esc(r.id)}">${
+        </div>
+        <div class="row-actions">
+          <button class="btn btn-sm btn-outline" data-toggle-rule="${esc(r.id)}">${
         r.enabled ? "Pause" : "Resume"
       }</button>
-            <button class="btn btn-sm btn-danger" data-delete-rule="${esc(r.id)}">Delete</button>
-          </div>
+          <button class="btn btn-sm btn-danger" data-delete-rule="${esc(r.id)}">Delete</button>
         </div>
-      `;
-    })
+      </div>
+    `
+    )
     .join("");
 }
 
@@ -305,22 +270,24 @@ function renderVault() {
   $("#count-vault").textContent = vault.length;
   const list = $("#vault-list");
   if (vault.length === 0) {
-    list.innerHTML = `<div class="item-card"><div class="item-sub">Cloud Vault is empty.</div></div>`;
+    list.innerHTML = `<div class="doc-row"><div class="doc-sub">No saved notes yet.</div></div>`;
     return;
   }
 
   list.innerHTML = vault
     .map(
       (v) => `
-      <div class="item-card">
-        <div class="item-top">
+      <div class="doc-row">
+        <div class="doc-row-top">
           <div>
-            <div class="item-title">${esc(v.title)}</div>
-            <div class="item-sub">${esc(v.destination)} &bull; ${fmtTime(v.created_at)}</div>
+            <div class="doc-title">${esc(v.title)}</div>
+            <div class="doc-sub">${esc(v.destination)} &bull; ${fmtTime(v.created_at)}</div>
           </div>
-          <span class="status-tag tag-completed">${esc(v.destination)}</span>
+          <span class="badge badge-completed">${esc(v.destination)}</span>
         </div>
-        <div class="item-sub" style="margin-top:8px;white-space:pre-wrap;">${esc(v.content)}</div>
+        <div class="doc-sub" style="margin-top:8px;white-space:pre-wrap;color:var(--text);">${esc(
+          v.content
+        )}</div>
       </div>
     `
     )
@@ -329,25 +296,27 @@ function renderVault() {
 
 function renderLogs() {
   const logs = state.data?.logs || [];
-  const list = $("#logs-list");
-  list.innerHTML = logs
-    .map(
-      (l) => `
-      <div class="log-line">
-        <span class="log-time">${fmtTime(l.created_at)}</span>
-        <span class="log-src">[${esc(l.source)}]</span>
-        <span class="log-${esc(l.level)}">${esc(l.message)}</span>
-      </div>
-    `
-    )
-    .join("");
+  $("#logs-list").innerHTML =
+    logs.length === 0
+      ? `<div class="doc-sub">No activity logs yet.</div>`
+      : logs
+          .map(
+            (l) => `
+          <div class="log-line">
+            <span class="log-time">${fmtTime(l.created_at)}</span>
+            <span class="log-src">[${esc(l.source)}]</span>
+            <span class="log-${esc(l.level)}">${esc(l.message)}</span>
+          </div>
+        `
+          )
+          .join("");
 }
 
 function renderAll() {
   if (!state.data) return;
-  renderTopbar();
-  renderDeviceSelector();
-  renderPhoneSimulator();
+  syncApkLinks();
+  renderHeaderAndConnectInfo();
+  renderDeviceUI();
   renderCommands();
   renderTasks();
   renderRules();
@@ -361,8 +330,9 @@ async function refreshState() {
     renderAll();
   } catch (err) {
     $("#connection-label").textContent = "Brain Offline";
-    $("#connection-pill .dot").classList.remove("online");
-    console.error("Failed to fetch state:", err);
+    $("#status-dot").classList.remove("online");
+    $("#status-dot").classList.add("offline");
+    console.error("Failed to load state:", err);
   }
 }
 
@@ -374,80 +344,263 @@ async function sendCommand(prompt) {
       method: "POST",
       body: JSON.stringify({ prompt: trimmed, deviceId: state.selectedDeviceId })
     });
-    showPhoneToast(res.summary || "Command processed");
+    showToast(res.summary || "Sent to Jarvis");
     $("#command-input").value = "";
     await refreshState();
   } catch (err) {
-    showPhoneToast(`Error: ${err.message}`);
+    showToast(`Error: ${err.message}`);
   }
 }
 
-async function updateSimTelemetry(patch, toastMsg) {
-  try {
-    await api(`/api/devices/${encodeURIComponent(state.selectedDeviceId)}/telemetry`, {
-      method: "POST",
-      body: JSON.stringify(patch)
-    });
-    if (toastMsg) showPhoneToast(toastMsg);
-    await refreshState();
-  } catch (err) {
-    showPhoneToast(`Telemetry error: ${err.message}`);
+function switchPage(page) {
+  state.activePage = page;
+  $$(".nav-item").forEach((b) => b.classList.toggle("active", b.getAttribute("data-page") === page));
+  $$(".page").forEach((p) => p.classList.toggle("active", p.id === `page-${page}`));
+  $("#sidebar").classList.remove("open");
+  $("#sidebar-backdrop").classList.add("hidden");
+}
+
+function copyText(text, label) {
+  if (!navigator.clipboard) {
+    showToast(text);
+    return;
   }
+  navigator.clipboard.writeText(text).then(
+    () => showToast(`${label} copied`),
+    () => showToast(text)
+  );
+}
+
+function applySavedTheme() {
+  const saved = localStorage.getItem("jarvis_theme");
+  const isDark = saved === "dark";
+  document.body.classList.toggle("dark", isDark);
+  $("#btn-theme-toggle").textContent = isDark ? "Light" : "Dark";
 }
 
 function setupListeners() {
-  // Command submit
+  // Navigation
+  $$(".nav-item[data-page]").forEach((btn) => {
+    btn.addEventListener("click", () => switchPage(btn.getAttribute("data-page")));
+  });
+
+  // Mobile menu
+  $("#btn-mobile-menu").addEventListener("click", () => {
+    $("#sidebar").classList.add("open");
+    $("#sidebar-backdrop").classList.remove("hidden");
+  });
+  $("#btn-close-menu").addEventListener("click", () => {
+    $("#sidebar").classList.remove("open");
+    $("#sidebar-backdrop").classList.add("hidden");
+  });
+  $("#sidebar-backdrop").addEventListener("click", () => {
+    $("#sidebar").classList.remove("open");
+    $("#sidebar-backdrop").classList.add("hidden");
+  });
+
+  // Theme toggle
+  $("#btn-theme-toggle").addEventListener("click", () => {
+    const nextDark = !document.body.classList.contains("dark");
+    document.body.classList.toggle("dark", nextDark);
+    localStorage.setItem("jarvis_theme", nextDark ? "dark" : "light");
+    $("#btn-theme-toggle").textContent = nextDark ? "Light" : "Dark";
+  });
+
+  // Main command form
   $("#command-form").addEventListener("submit", (e) => {
     e.preventDefault();
     sendCommand($("#command-input").value);
   });
 
-  // Preset chips
-  $$(".chip[data-cmd]").forEach((chip) => {
-    chip.addEventListener("click", () => {
-      const cmd = chip.getAttribute("data-cmd");
+  // Quick command pills
+  $$(".pill-btn[data-cmd]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const cmd = btn.getAttribute("data-cmd");
       $("#command-input").value = cmd;
       sendCommand(cmd);
     });
   });
 
-  // Tabs
-  $$(".tab-btn").forEach((btn) => {
+  $$("[data-quick-cmd]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const tab = btn.getAttribute("data-tab");
-      state.activeTab = tab;
-      $$(".tab-btn").forEach((b) => b.classList.toggle("active", b === btn));
-      $$(".tab-content").forEach((c) => c.classList.toggle("active", c.id === `tab-${tab}`));
+      sendCommand(btn.getAttribute("data-quick-cmd"));
     });
   });
 
-  // Safety toggle
+  // Quick open custom app
+  $("#quick-open-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const app = $("#quick-app-name").value.trim();
+    if (!app) return;
+    $("#quick-app-name").value = "";
+    sendCommand(`Open ${app}`);
+  });
+
+  // Quick brightness slider
+  $("#quick-brightness").addEventListener("input", (e) => {
+    $("#quick-bright-val").textContent = `${e.target.value}%`;
+  });
+  $("#quick-brightness").addEventListener("change", (e) => {
+    sendCommand(`Set brightness to ${e.target.value}%`);
+  });
+
+  // Quick message / SMS / notification
+  $("#quick-msg-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const kind = $("#quick-msg-type").value;
+    const to = $("#quick-msg-to").value.trim();
+    const msg = $("#quick-msg-text").value.trim();
+    if (!msg) return;
+    let prompt = "";
+    if (kind === "notify") {
+      prompt = `Notify me ${msg}`;
+    } else if (kind === "sms") {
+      if (!to) return showToast("Enter recipient name or phone number");
+      prompt = `Send SMS to ${to} saying ${msg}`;
+    } else {
+      if (!to) return showToast("Enter recipient name");
+      prompt = `Open WhatsApp and message ${to} that ${msg}`;
+    }
+    $("#quick-msg-text").value = "";
+    sendCommand(prompt);
+  });
+
+  // Quick alarm
+  $("#quick-alarm-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const val = $("#quick-alarm-time").value || "06:30";
+    sendCommand(`Set an alarm for ${val}`);
+  });
+
+  // Schedule builder form
+  $("#sched-type").addEventListener("change", (e) => {
+    const isDelay = e.target.value === "delay";
+    $("#sched-time").classList.toggle("hidden", isDelay);
+    $("#sched-minutes").classList.toggle("hidden", !isDelay);
+  });
+
+  $("#schedule-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const type = $("#sched-type").value;
+    const action = $("#sched-prompt").value.trim();
+    if (!action) return showToast("Enter an action for the schedule");
+    let prompt = "";
+    if (type === "delay") {
+      const mins = Math.max(1, Number($("#sched-minutes").value || 5));
+      prompt = `In ${mins} minutes ${action}`;
+    } else if (type === "weekday") {
+      const t = $("#sched-time").value || "08:30";
+      prompt = `Every weekday at ${t} ${action}`;
+    } else {
+      const t = $("#sched-time").value || "08:30";
+      prompt = `Every day at ${t} ${action}`;
+    }
+    $("#sched-prompt").value = "";
+    sendCommand(prompt);
+  });
+
+  // Rule builder form
+  $("#rule-trigger").addEventListener("change", (e) => {
+    const val = e.target.value;
+    const input = $("#rule-cond-val");
+    if (val === "battery") input.placeholder = "Battery threshold (e.g. 20)";
+    else if (val === "wifi") input.placeholder = "Wi-Fi network name (e.g. Office-5G)";
+    else input.placeholder = "Sender name (e.g. Mom)";
+  });
+
+  $("#rule-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const trigger = $("#rule-trigger").value;
+    const cond = $("#rule-cond-val").value.trim();
+    const action = $("#rule-action").value.trim();
+    if (!action) return showToast("Enter what Jarvis should do");
+    let prompt = "";
+    if (trigger === "battery") {
+      prompt = `When battery drops below ${cond || "20"}%, ${action}`;
+    } else if (trigger === "wifi") {
+      prompt = `When Wi-Fi connects to ${cond || "Office-5G"}, ${action}`;
+    } else {
+      prompt = cond
+        ? `When I get a WhatsApp message from ${cond}, ${action}`
+        : `When I get a WhatsApp message, ${action}`;
+    }
+    $("#rule-action").value = "";
+    sendCommand(prompt);
+  });
+
+  // Copy buttons
+  $("#btn-copy-inline-token").addEventListener("click", () => {
+    copyText($("#inline-token").textContent, "Pairing Token");
+  });
+  $("#btn-copy-origin").addEventListener("click", () => {
+    copyText($("#connect-origin").textContent, "Brain URL");
+  });
+  $("#btn-copy-token").addEventListener("click", () => {
+    copyText($("#connect-token").textContent, "Pairing Token");
+  });
+
+  // Safety toggle & device selector
   $("#safety-toggle").addEventListener("change", async (e) => {
     await api("/api/settings", {
       method: "POST",
       body: JSON.stringify({ confirm_sensitive_actions: e.target.checked })
     });
+    showToast("Safety setting saved");
     await refreshState();
   });
 
-  // Device selector
   $("#device-selector").addEventListener("change", (e) => {
     state.selectedDeviceId = e.target.value;
-    renderAll();
+    renderDeviceUI();
   });
 
-  // Delegated actions for lists & simulator app tiles
+  // Settings form
+  $("#settings-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    await api("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({
+        timezone: $("#set-timezone").value.trim() || "Asia/Kolkata",
+        llm_config: {
+          enabled: $("#set-llm-enabled").checked,
+          baseUrl: $("#set-llm-url").value.trim(),
+          model: $("#set-llm-model").value.trim(),
+          apiKey: $("#set-llm-key").value.trim()
+        }
+      })
+    });
+    showToast("Settings saved");
+    await refreshState();
+  });
+
+  // Populate settings inputs once loaded
+  const populateSettingsOnce = setInterval(() => {
+    const s = state.data?.settings;
+    if (!s) return;
+    $("#set-timezone").value = s.timezone || "Asia/Kolkata";
+    $("#set-llm-enabled").checked = Boolean(s.llm_config?.enabled);
+    $("#set-llm-url").value = s.llm_config?.baseUrl || "https://api.openai.com/v1/chat/completions";
+    $("#set-llm-model").value = s.llm_config?.model || "gpt-4o-mini";
+    $("#set-llm-key").value = s.llm_config?.apiKey || "";
+    clearInterval(populateSettingsOnce);
+  }, 300);
+
+  // Delegated actions
   document.addEventListener("click", async (e) => {
+    const gotoPage = e.target.getAttribute("data-goto");
+    if (gotoPage) return switchPage(gotoPage);
+
     const approveId = e.target.getAttribute("data-approve");
     if (approveId) {
       await api(`/api/commands/${encodeURIComponent(approveId)}/approve`, { method: "POST" });
-      showPhoneToast("Approved & executed");
+      showToast("Approved & queued for phone");
       return refreshState();
     }
 
     const cancelId = e.target.getAttribute("data-cancel");
     if (cancelId) {
       await api(`/api/commands/${encodeURIComponent(cancelId)}/cancel`, { method: "POST" });
+      showToast("Command cancelled");
       return refreshState();
     }
 
@@ -474,109 +627,54 @@ function setupListeners() {
       await api(`/api/rules/${encodeURIComponent(delRule)}`, { method: "DELETE" });
       return refreshState();
     }
-
-    const openApp = e.target.getAttribute("data-open");
-    if (openApp) {
-      return updateSimTelemetry({ activeApp: openApp }, `Opened ${openApp}`);
-    }
-
-    const closeModal = e.target.getAttribute("data-close");
-    if (closeModal) {
-      $(`#${closeModal}`)?.classList.add("hidden");
-    }
   });
 
-  // Simulator controls
-  $("#ctrl-battery").addEventListener("change", (e) => {
-    updateSimTelemetry({ battery: Number(e.target.value) }, `Battery: ${e.target.value}%`);
-  });
-
-  $("#ctrl-brightness").addEventListener("change", (e) => {
-    updateSimTelemetry({ brightness: Number(e.target.value) }, `Brightness: ${e.target.value}%`);
-  });
-
-  $("#btn-sim-low-bat").addEventListener("click", () => {
-    updateSimTelemetry({ battery: 15 }, "Simulated battery drop to 15%");
-  });
-
-  $("#btn-sim-wifi").addEventListener("click", () => {
-    updateSimTelemetry({ wifi: "Office-5G" }, "Switched Wi-Fi to Office-5G");
-  });
-
-  $("#btn-sim-toggle-lock").addEventListener("click", () => {
-    const dev = getSelectedDevice();
-    const next = !dev?.telemetry?.locked;
-    updateSimTelemetry({ locked: next }, next ? "Screen Locked" : "Screen Unlocked");
-  });
-
-  $("#btn-sim-unlock").addEventListener("click", () => {
-    updateSimTelemetry({ locked: false }, "Phone Unlocked");
-  });
-
-  $("#sim-btn-home").addEventListener("click", () => {
-    updateSimTelemetry({ activeApp: "Launcher" }, "Home");
-  });
-
-  $("#sim-btn-back").addEventListener("click", () => {
-    updateSimTelemetry({ activeApp: "Launcher" }, "Back");
-  });
-
-  $("#sim-btn-lock").addEventListener("click", () => {
-    updateSimTelemetry({ locked: true }, "Screen Locked");
-  });
-
+  // Optional simulator test buttons
   $("#btn-sim-whatsapp").addEventListener("click", async () => {
     await api("/api/notifications", {
       method: "POST",
       body: JSON.stringify({
-        deviceId: state.selectedDeviceId,
+        deviceId: "sim-pixel-9",
         fromSimulator: true,
         app: "WhatsApp",
         sender: "Mom",
         text: "Beta, have you reached yet?"
       })
     });
-    showPhoneToast("Incoming WhatsApp from Mom");
+    showToast("Simulated incoming WhatsApp from Mom");
     await refreshState();
   });
 
-  // Modals
-  $("#btn-open-connect").addEventListener("click", () => {
-    $("#modal-connect").classList.remove("hidden");
-  });
-
-  $("#btn-open-settings").addEventListener("click", () => {
-    const s = state.data?.settings;
-    if (s) {
-      $("#set-timezone").value = s.timezone || "Asia/Kolkata";
-      $("#set-llm-enabled").checked = Boolean(s.llm_config?.enabled);
-      $("#set-llm-url").value = s.llm_config?.baseUrl || "https://api.openai.com/v1/chat/completions";
-      $("#set-llm-model").value = s.llm_config?.model || "gpt-4o-mini";
-      $("#set-llm-key").value = s.llm_config?.apiKey || "";
-    }
-    $("#modal-settings").classList.remove("hidden");
-  });
-
-  $("#settings-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    await api("/api/settings", {
+  $("#btn-sim-low-bat").addEventListener("click", async () => {
+    await api("/api/devices/sim-pixel-9/telemetry", {
       method: "POST",
-      body: JSON.stringify({
-        timezone: $("#set-timezone").value.trim() || "Asia/Kolkata",
-        llm_config: {
-          enabled: $("#set-llm-enabled").checked,
-          baseUrl: $("#set-llm-url").value.trim(),
-          model: $("#set-llm-model").value.trim(),
-          apiKey: $("#set-llm-key").value.trim()
-        }
-      })
+      body: JSON.stringify({ battery: 15 })
     });
-    $("#modal-settings").classList.add("hidden");
-    showPhoneToast("Settings saved");
+    showToast("Simulated battery 15%");
     await refreshState();
   });
 
-  // Web Speech API Microphone
+  $("#btn-sim-wifi").addEventListener("click", async () => {
+    await api("/api/devices/sim-pixel-9/telemetry", {
+      method: "POST",
+      body: JSON.stringify({ wifi: "Office-5G" })
+    });
+    showToast("Simulated Wi-Fi Office-5G");
+    await refreshState();
+  });
+
+  $("#btn-sim-toggle-lock").addEventListener("click", async () => {
+    const sim = (state.data?.devices || []).find((d) => d.id === "sim-pixel-9");
+    const next = !sim?.telemetry?.locked;
+    await api("/api/devices/sim-pixel-9/telemetry", {
+      method: "POST",
+      body: JSON.stringify({ locked: next })
+    });
+    showToast(next ? "Test device locked" : "Test device unlocked");
+    await refreshState();
+  });
+
+  // Browser Voice Input
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const micBtn = $("#btn-mic");
   if (SpeechRecognition) {
@@ -600,6 +698,7 @@ function setupListeners() {
   }
 }
 
+applySavedTheme();
 setupListeners();
 refreshState();
 setInterval(refreshState, 3000);

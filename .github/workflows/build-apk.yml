@@ -7,6 +7,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   test-brain:
     runs-on: ubuntu-latest
@@ -50,3 +53,17 @@ jobs:
           name: jarvis-agent-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Publish Direct APK Download Release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk jarvis-agent.apk
+          if gh release view latest >/dev/null 2>&1; then
+            gh release upload latest jarvis-agent.apk --clobber
+          else
+            gh release create latest jarvis-agent.apk \
+              --title "J.A.R.V.I.S. Android APK (Latest)" \
+              --notes "Direct Android APK build from main. Download jarvis-agent.apk, install on your Android phone, and connect to https://jarvis-brain-nu.vercel.app."
+          fi

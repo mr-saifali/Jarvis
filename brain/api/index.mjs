@@ -11,6 +11,11 @@ import {
   tickScheduler
 } from "../src/engine.mjs";
 
+const APK_DIRECT_URL =
+  process.env.JARVIS_APK_URL ||
+  "https://github.com/mr-saifali/Jarvis/releases/download/latest/jarvis-agent.apk";
+const APK_FALLBACK_URL = "https://github.com/mr-saifali/Jarvis/releases";
+
 function sendJson(res, status, payload) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -79,8 +84,41 @@ export function createApiHandler(storeFactory = () => createStoreFromEnv(process
     const method = (req.method || "GET").toUpperCase();
 
     try {
+      // Direct Android APK download redirect
+      if ((method === "GET" || method === "HEAD") && pathname === "/api/download-apk") {
+        let targetUrl = APK_DIRECT_URL;
+        try {
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 3000);
+          const ghRes = await fetch(
+            "https://api.github.com/repos/mr-saifali/Jarvis/releases/tags/latest",
+            {
+              headers: { Accept: "application/vnd.github+json", "User-Agent": "jarvis-brain" },
+              signal: ctrl.signal
+            }
+          );
+          clearTimeout(timer);
+          if (ghRes.ok) {
+            const rel = await ghRes.json();
+            const apkAsset = (rel.assets || []).find((a) => a.name?.endsWith(".apk"));
+            if (apkAsset?.browser_download_url) {
+              targetUrl = apkAsset.browser_download_url;
+            }
+          } else {
+            targetUrl = APK_FALLBACK_URL;
+          }
+        } catch {
+          targetUrl = APK_DIRECT_URL;
+        }
+        res.statusCode = 302;
+        res.setHeader("Location", targetUrl);
+        res.setHeader("Cache-Control", "no-store");
+        res.end();
+        return;
+      }
+
       // Health check
-      if (method === "GET" && pathname === "/api/health") {
+      if ((method === "GET" || method === "HEAD") && pathname === "/api/health") {
         const hasSupabase = Boolean(
           process.env.SUPABASE_URL &&
             (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY)
@@ -91,6 +129,7 @@ export function createApiHandler(storeFactory = () => createStoreFromEnv(process
           runtime: process.env.VERCEL ? "vercel" : "node",
           supabase: hasSupabase,
           storage: store.mode,
+          apkUrl: APK_DIRECT_URL,
           timestamp: new Date().toISOString()
         });
       }
@@ -122,6 +161,7 @@ export function createApiHandler(storeFactory = () => createStoreFromEnv(process
 
         return sendJson(res, 200, {
           ok: true,
+          apkUrl: APK_DIRECT_URL,
           settings: safeSettings,
           devices,
           commands,
