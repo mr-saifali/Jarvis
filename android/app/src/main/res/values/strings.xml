@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Jarvis Agent</string>
+    <string name="accessibility_service_description">Allows Jarvis to read on-screen UI elements and perform taps, typing, and navigation for your voice or scheduled commands.</string>
+</resources>
