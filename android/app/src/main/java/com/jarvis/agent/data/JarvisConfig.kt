@@ -16,7 +16,7 @@ object JarvisLogStore {
     fun append(msg: String) {
         val ts = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
         val line = "[$ts] $msg"
-        _logs.value = (listOf(line) + _logs.value).take(50)
+        _logs.value = (listOf(line) + _logs.value).take(80)
     }
 }
 
@@ -30,6 +30,10 @@ class JarvisConfig(context: Context) {
     var pairingToken: String
         get() = prefs.getString("pairing_token", "jarvis-d4d0cd67") ?: "jarvis-d4d0cd67"
         set(value) = prefs.edit().putString("pairing_token", value.trim()).apply()
+
+    var voiceFeedback: Boolean
+        get() = prefs.getBoolean("voice_feedback", true)
+        set(value) = prefs.edit().putBoolean("voice_feedback", value).apply()
 
     var deviceId: String
         get() {

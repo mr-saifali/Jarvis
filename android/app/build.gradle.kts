@@ -9,16 +9,34 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.jarvis.agent"
-        minSdk = 26
-        targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        applicationId = "com.saifali.jarvis"
+        minSdk = 24
+        targetSdk = 34
+        versionCode = 2
+        versionName = "2.0.0"
+    }
+
+    signingConfigs {
+        create("sideload") {
+            storeFile = file("sideload.p12")
+            storePassword = "jarvis123"
+            keyAlias = "jarvis"
+            keyPassword = "jarvis123"
+            storeType = "PKCS12"
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("sideload")
+        }
         release {
             isMinifyEnabled = false
+            isDebuggable = false
+            signingConfig = signingConfigs.getByName("sideload")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

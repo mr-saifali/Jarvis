@@ -36,10 +36,170 @@ function extractActionsDeterministic(text) {
   const actions = [];
   const lower = text.toLowerCase();
 
-  // Open app
+  // Flashlight / Torch
+  if (/\b(?:turn\s+on|enable|activate)\s+(?:the\s+)?(?:flashlight|torch)\b/i.test(text) || /^(?:flashlight|torch)\s+on$/i.test(text.trim())) {
+    actions.push({
+      type: "set_flashlight",
+      enabled: true,
+      label: "Turn on flashlight",
+      requiresUnlock: false
+    });
+  } else if (/\b(?:turn\s+off|disable|deactivate)\s+(?:the\s+)?(?:flashlight|torch)\b/i.test(text) || /^(?:flashlight|torch)\s+off$/i.test(text.trim())) {
+    actions.push({
+      type: "set_flashlight",
+      enabled: false,
+      label: "Turn off flashlight",
+      requiresUnlock: false
+    });
+  }
+
+  // Volume & Ringer
+  const volMatch = text.match(/\bvolume\s+(?:to\s+)?(\d{1,3})\s*%?/i);
+  if (volMatch) {
+    const level = Math.max(0, Math.min(100, Number.parseInt(volMatch[1], 10)));
+    actions.push({
+      type: "set_volume",
+      mode: "level",
+      level,
+      label: `Set volume to ${level}%`,
+      requiresUnlock: false
+    });
+  } else if (/\b(?:unmute|normal\s+ringer)\b/i.test(text)) {
+    actions.push({ type: "set_volume", mode: "unmute", label: "Unmute phone", requiresUnlock: false });
+  } else if (/\b(?:mute)\b/i.test(text)) {
+    actions.push({ type: "set_volume", mode: "mute", label: "Mute phone", requiresUnlock: false });
+  } else if (/\bvibrate\s+mode\b/i.test(text)) {
+    actions.push({ type: "set_volume", mode: "vibrate", label: "Set phone to vibrate", requiresUnlock: false });
+  }
+
+  // Media control
+  if (/\b(?:next\s+(?:song|track|music)|skip\s+track)\b/i.test(text)) {
+    actions.push({ type: "media_control", command: "next", label: "Next track", requiresUnlock: false });
+  } else if (/\b(?:previous|prev)\s+(?:song|track|music)\b/i.test(text)) {
+    actions.push({ type: "media_control", command: "previous", label: "Previous track", requiresUnlock: false });
+  } else if (/\bpause\s+(?:music|media|song|playback)\b/i.test(text)) {
+    actions.push({ type: "media_control", command: "pause", label: "Pause media", requiresUnlock: false });
+  } else if (/\bplay\s+(?:music|media|song)\b/i.test(text)) {
+    actions.push({ type: "media_control", command: "play", label: "Play media", requiresUnlock: false });
+  }
+
+  // YouTube search: "play Believer on YouTube"
+  const ytMatch = text.match(/\bplay\s+(.+?)\s+on\s+youtube\b/i) || text.match(/\byoutube\s+search\s+(.+)$/i);
+  if (ytMatch) {
+    const query = ytMatch[1].trim();
+    actions.push({
+      type: "play_youtube",
+      query,
+      label: `Search YouTube: "${query}"`,
+      requiresUnlock: true
+    });
+  }
+
+  // Google Maps navigation: "navigate to Patna Junction"
+  const navMatch = text.match(/\b(?:navigate|directions)\s+(?:to\s+)?(.+)$/i);
+  if (navMatch) {
+    const destination = navMatch[1].trim();
+    actions.push({
+      type: "navigate_maps",
+      destination,
+      label: `Navigate to ${destination}`,
+      requiresUnlock: true
+    });
+  }
+
+  // Open URL
+  const urlMatch = text.match(/\b(https?:\/\/\S+)/i);
+  if (urlMatch) {
+    actions.push({
+      type: "open_url",
+      url: urlMatch[1],
+      label: `Open ${urlMatch[1]}`,
+      requiresUnlock: true
+    });
+  }
+
+  // Speak aloud (Jarvis TTS)
+  const speakMatch = text.match(/^(?:say|speak(?:\s+aloud)?)\s+(?:on\s+phone\s+)?(.+)$/i);
+  if (speakMatch) {
+    const spoken = speakMatch[1].trim().replace(/^["']|["']$/g, "");
+    actions.push({
+      type: "speak_tts",
+      text: spoken,
+      label: `Speak aloud: "${spoken}"`,
+      requiresUnlock: false
+    });
+  }
+
+  // Ring / Find phone
+  if (/\b(?:ring|find)\s+(?:my\s+)?phone\b/i.test(text)) {
+    actions.push({
+      type: "ring_phone",
+      message: "Jarvis is locating your phone",
+      label: "Ring phone loudly",
+      requiresUnlock: false
+    });
+  }
+
+  // Screenshot
+  if (/\b(?:take\s+(?:a\s+)?)?screenshot\b/i.test(text)) {
+    actions.push({
+      type: "take_screenshot",
+      label: "Take screenshot",
+      requiresUnlock: false
+    });
+  }
+
+  // Timer: "set a timer for 5 minutes"
+  const timerMatch = text.match(/\btimer\s+(?:for\s+)?(\d+)\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)/i);
+  if (timerMatch) {
+    const qty = Number.parseInt(timerMatch[1], 10);
+    const unit = timerMatch[2].toLowerCase();
+    const seconds = unit.startsWith("h") ? qty * 3600 : unit.startsWith("m") ? qty * 60 : qty;
+    actions.push({
+      type: "set_timer",
+      seconds,
+      timerLabel: "Jarvis Timer",
+      label: `Set timer for ${qty} ${unit}`,
+      requiresUnlock: false
+    });
+  }
+
+  // Clipboard: "copy Hello world to clipboard"
+  const clipMatch = text.match(/\bcopy\s+(.+?)\s+to\s+clipboard\b/i);
+  if (clipMatch) {
+    const clipText = clipMatch[1].trim().replace(/^["']|["']$/g, "");
+    actions.push({
+      type: "copy_clipboard",
+      text: clipText,
+      label: "Copy text to phone clipboard",
+      requiresUnlock: false
+    });
+  }
+
+  // UI Scroll / Tap / Panels
+  if (/\bscroll\s+down\b/i.test(text)) {
+    actions.push({ type: "ui_scroll", direction: "down", label: "Scroll down", requiresUnlock: true });
+  } else if (/\bscroll\s+up\b/i.test(text)) {
+    actions.push({ type: "ui_scroll", direction: "up", label: "Scroll up", requiresUnlock: true });
+  }
+  const tapMatch = text.match(/^tap\s+(.+)$/i);
+  if (tapMatch) {
+    actions.push({ type: "ui_tap", target: tapMatch[1].trim(), label: `Tap "${tapMatch[1].trim()}"`, requiresUnlock: true });
+  }
+  if (/\bopen\s+quick\s+settings\b/i.test(text)) {
+    actions.push({ type: "open_quick_settings", label: "Open Quick Settings", requiresUnlock: false });
+  }
+  if (/\bopen\s+notifications?\b/i.test(text)) {
+    actions.push({ type: "open_notifications", label: "Open Notifications Shade", requiresUnlock: false });
+  }
+
+  // Open app (skip generic phrases like "open quick settings" / "open notifications" / URLs)
   const openMatch = text.match(/\bopen\s+([A-Za-z0-9_+.-]+)/i);
   let openedApp = null;
-  if (openMatch) {
+  if (
+    openMatch &&
+    !/\bopen\s+(?:quick\s+settings|notifications?|https?:)/i.test(text)
+  ) {
     openedApp = openMatch[1].replace(/[.,!?;:]+$/, "");
     actions.push({
       type: "open_app",

@@ -3,16 +3,28 @@ package com.jarvis.agent.service
 import android.app.KeyguardManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
+import android.media.AudioManager
+import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.provider.AlarmClock
 import android.provider.Settings
 import android.telephony.SmsManager
+import android.view.KeyEvent
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import com.jarvis.agent.data.JarvisConfig
 import com.jarvis.agent.data.JarvisLogStore
 import kotlinx.coroutines.delay
 import org.json.JSONArray
@@ -24,12 +36,14 @@ class DeviceActionExecutor(private val context: Context) {
         private const val ALERT_CHANNEL = "jarvis_alerts"
     }
 
-    suspend fun executeActions(actions: JSONArray): Pair<String, JSONArray> {
+    suspend fun executeActions(actions: JSONArray, speakResult: Boolean = false): Pair<String, JSONArray> {
         val resultActions = JSONArray()
         val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
         val isLocked = keyguard.isKeyguardLocked
         var blocked = 0
         var executed = 0
+        var lastLabel = ""
+        var spokeExplicitly = false
 
         for (i in 0 until actions.length()) {
             val action = JSONObject(actions.getJSONObject(i).toString())
@@ -46,11 +60,21 @@ class DeviceActionExecutor(private val context: Context) {
 
             val ok = executeSingle(type, action)
             action.put("status", if (ok) "done" else "failed")
-            if (ok) executed++ else blocked++
+            if (ok) {
+                executed++
+                lastLabel = action.optString("label", type)
+                if (type == "speak_tts") spokeExplicitly = true
+            } else {
+                blocked++
+            }
             resultActions.put(action)
         }
 
-        val summary = "Executed $executed step(s)" + if (blocked > 0) ", $blocked skipped/blocked" else ""
+        val config = JarvisConfig(context)
+        if ((speakResult || config.voiceFeedback) && !spokeExplicitly && executed > 0 && lastLabel.isNotBlank()) {
+            JarvisVoiceEngine.speak(context, "Done, sir. $lastLabel")
+        }
+
         val status = if (executed == 0 && blocked > 0) "failed" else "completed"
         return status to resultActions
     }
@@ -63,14 +87,7 @@ class DeviceActionExecutor(private val context: Context) {
                     val recipient = action.optString("recipient", "")
                     val msg = action.optString("message", "")
                     val acc = JarvisAccessibilityService.instance ?: return false
-                    if (recipient.isNotBlank()) {
-                        acc.clickNodeByText(recipient)
-                        delay(700)
-                    }
-                    acc.typeTextIntoFocusedOrEditable(msg)
-                    delay(400)
-                    acc.clickNodeByText("Send")
-                    true
+                    acc.sendWhatsAppMessage(recipient, msg)
                 }
                 "reply_notification" -> {
                     JarvisNotificationService.sendQuickReply(
@@ -81,7 +98,35 @@ class DeviceActionExecutor(private val context: Context) {
                 }
                 "set_dnd" -> setDnd(action.optBoolean("enabled", true))
                 "set_brightness" -> setBrightness(action.optInt("level", 50))
-                "set_alarm" -> setAlarm(action.optString("time", "06:30"), action.optString("alarmLabel", "Jarvis Alarm"))
+                "set_flashlight" -> setFlashlight(action.optBoolean("enabled", true))
+                "set_volume" -> setVolume(
+                    action.optInt("level", 60),
+                    action.optString("mode", "level")
+                )
+                "media_control" -> dispatchMediaKey(action.optString("command", "play_pause"))
+                "speak_tts" -> {
+                    val text = action.optString("text", action.optString("message", ""))
+                    JarvisVoiceEngine.speak(context, text)
+                    true
+                }
+                "ring_phone" -> ringPhone(action.optString("message", "Jarvis is locating your phone"))
+                "take_screenshot" -> JarvisAccessibilityService.instance?.takeScreenshotAction() ?: false
+                "set_alarm" -> setAlarm(
+                    action.optString("time", "06:30"),
+                    action.optString("alarmLabel", "Jarvis Alarm")
+                )
+                "set_timer" -> setTimer(
+                    action.optInt("seconds", 60),
+                    action.optString("timerLabel", "Jarvis Timer")
+                )
+                "open_url" -> openUrl(action.optString("url", ""))
+                "navigate_maps" -> openUrl("google.navigation:q=${Uri.encode(action.optString("destination", ""))}")
+                "play_youtube" -> openUrl("https://www.youtube.com/results?search_query=${Uri.encode(action.optString("query", ""))}")
+                "copy_clipboard" -> copyClipboard(action.optString("text", ""))
+                "ui_tap" -> JarvisAccessibilityService.instance?.clickNodeByText(action.optString("target", "")) ?: false
+                "ui_scroll" -> JarvisAccessibilityService.instance?.scroll(action.optString("direction", "down") != "up") ?: false
+                "open_quick_settings" -> JarvisAccessibilityService.instance?.openQuickSettings() ?: false
+                "open_notifications" -> JarvisAccessibilityService.instance?.openNotificationsShade() ?: false
                 "send_sms" -> sendSms(action.optString("recipient", ""), action.optString("message", ""))
                 "make_call" -> makeCall(action.optString("recipient", ""))
                 "notify" -> showNotification(action.optString("title", "J.A.R.V.I.S."), action.optString("message", ""))
@@ -103,8 +148,14 @@ class DeviceActionExecutor(private val context: Context) {
         val pm = context.packageManager
         val knownPkg = when (appName.lowercase()) {
             "whatsapp" -> "com.whatsapp"
+            "whatsapp business" -> "com.whatsapp.w4b"
             "spotify" -> "com.spotify.music"
+            "youtube" -> "com.google.android.youtube"
+            "maps", "google maps" -> "com.google.android.apps.maps"
             "gmail" -> "com.google.android.gm"
+            "chrome" -> "com.android.chrome"
+            "instagram" -> "com.instagram.android"
+            "telegram" -> "org.telegram.messenger"
             "settings" -> "com.android.settings"
             "clock" -> "com.google.android.deskclock"
             "notion" -> "notion.id"
@@ -112,10 +163,14 @@ class DeviceActionExecutor(private val context: Context) {
         }
 
         val launchIntent = (knownPkg?.let { pm.getLaunchIntentForPackage(it) })
-            ?: pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                .firstOrNull {
-                    pm.getApplicationLabel(it).toString().contains(appName, ignoreCase = true)
-                }?.let { pm.getLaunchIntentForPackage(it.packageName) }
+            ?: run {
+                val mainIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                val resolved = pm.queryIntentActivities(mainIntent, 0)
+                val match = resolved.firstOrNull {
+                    it.loadLabel(pm).toString().contains(appName, ignoreCase = true)
+                }
+                match?.activityInfo?.packageName?.let { pm.getLaunchIntentForPackage(it) }
+            }
 
         if (launchIntent != null) {
             launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -123,7 +178,93 @@ class DeviceActionExecutor(private val context: Context) {
             JarvisLogStore.append("Opened $appName")
             return true
         }
+        JarvisLogStore.append("App not found: $appName")
         return false
+    }
+
+    private fun setFlashlight(enabled: Boolean): Boolean {
+        val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        val cameraId = cm.cameraIdList.firstOrNull { id ->
+            val chars = cm.getCameraCharacteristics(id)
+            chars.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true &&
+                chars.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
+        } ?: cm.cameraIdList.firstOrNull() ?: return false
+
+        cm.setTorchMode(cameraId, enabled)
+        JarvisLogStore.append("Flashlight ${if (enabled) "ON" else "OFF"}")
+        return true
+    }
+
+    private fun setVolume(percent: Int, mode: String): Boolean {
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        when (mode.lowercase()) {
+            "mute" -> {
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0)
+                if (am.isVolumeFixed.not()) {
+                    try { am.ringerMode = AudioManager.RINGER_MODE_SILENT } catch (_: Exception) {}
+                }
+                JarvisLogStore.append("Audio muted")
+                return true
+            }
+            "vibrate" -> {
+                try { am.ringerMode = AudioManager.RINGER_MODE_VIBRATE } catch (_: Exception) {}
+                JarvisLogStore.append("Ringer set to vibrate")
+                return true
+            }
+            "unmute", "normal" -> {
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
+                try { am.ringerMode = AudioManager.RINGER_MODE_NORMAL } catch (_: Exception) {}
+                JarvisLogStore.append("Audio unmuted")
+                return true
+            }
+            else -> {
+                val maxMusic = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                val targetMusic = ((percent.coerceIn(0, 100) / 100.0) * maxMusic).toInt().coerceIn(0, maxMusic)
+                am.setStreamVolume(AudioManager.STREAM_MUSIC, targetMusic, 0)
+                JarvisLogStore.append("Media volume set to $percent%")
+                return true
+            }
+        }
+    }
+
+    private fun dispatchMediaKey(command: String): Boolean {
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val keyCode = when (command.lowercase()) {
+            "play" -> KeyEvent.KEYCODE_MEDIA_PLAY
+            "pause" -> KeyEvent.KEYCODE_MEDIA_PAUSE
+            "next" -> KeyEvent.KEYCODE_MEDIA_NEXT
+            "previous", "prev" -> KeyEvent.KEYCODE_MEDIA_PREVIOUS
+            else -> KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+        }
+        am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+        am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+        JarvisLogStore.append("Media control: $command")
+        return true
+    }
+
+    private suspend fun ringPhone(message: String): Boolean {
+        showNotification("J.A.R.V.I.S. Find Phone", message)
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val maxAlarm = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+        am.setStreamVolume(AudioManager.STREAM_ALARM, maxAlarm, 0)
+
+        @Suppress("DEPRECATION")
+        val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator?.vibrate(VibrationEffect.createOneShot(2500, VibrationEffect.DEFAULT_AMPLITUDE))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator?.vibrate(2500)
+        }
+
+        val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+        val ringtone = RingtoneManager.getRingtone(context, uri)
+        ringtone?.play()
+        JarvisLogStore.append("Ringing phone for 4 seconds")
+        delay(4000)
+        ringtone?.stop()
+        return true
     }
 
     private fun setDnd(enabled: Boolean): Boolean {
@@ -162,10 +303,45 @@ class DeviceActionExecutor(private val context: Context) {
         return true
     }
 
+    private fun setTimer(seconds: Int, label: String): Boolean {
+        val intent = Intent(AlarmClock.ACTION_SET_TIMER).apply {
+            putExtra(AlarmClock.EXTRA_LENGTH, seconds.coerceAtLeast(1))
+            putExtra(AlarmClock.EXTRA_MESSAGE, label)
+            putExtra(AlarmClock.EXTRA_SKIP_UI, true)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+        JarvisLogStore.append("Set timer for ${seconds}s")
+        return true
+    }
+
+    private fun openUrl(url: String): Boolean {
+        if (url.isBlank()) return false
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+        JarvisLogStore.append("Opened URI: $url")
+        return true
+    }
+
+    private fun copyClipboard(text: String): Boolean {
+        if (text.isBlank()) return false
+        Handler(Looper.getMainLooper()).post {
+            val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cb.setPrimaryClip(ClipData.newPlainText("Jarvis", text))
+        }
+        JarvisLogStore.append("Copied to clipboard")
+        return true
+    }
+
     private fun sendSms(recipient: String, message: String): Boolean {
         if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.SEND_SMS)
             != PackageManager.PERMISSION_GRANTED
-        ) return false
+        ) {
+            JarvisLogStore.append("Missing SEND_SMS permission")
+            return false
+        }
         val smsManager = context.getSystemService(SmsManager::class.java)
         smsManager.sendTextMessage(recipient, null, message, null, null)
         JarvisLogStore.append("Sent SMS to $recipient")
@@ -175,11 +351,15 @@ class DeviceActionExecutor(private val context: Context) {
     private fun makeCall(recipient: String): Boolean {
         if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.CALL_PHONE)
             != PackageManager.PERMISSION_GRANTED
-        ) return false
+        ) {
+            JarvisLogStore.append("Missing CALL_PHONE permission")
+            return false
+        }
         val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$recipient")).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         context.startActivity(intent)
+        JarvisLogStore.append("Calling $recipient")
         return true
     }
 

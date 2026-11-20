@@ -109,6 +109,13 @@ export async function executeActionsForDevice(store, device, actions) {
         case "set_brightness":
           telemetry.brightness = Math.max(5, Math.min(100, Number(action.level || 65)));
           break;
+        case "set_flashlight":
+          telemetry.flashlight = Boolean(action.enabled);
+          break;
+        case "set_volume":
+          if (action.mode === "mute") telemetry.volume = 0;
+          else if (typeof action.level === "number") telemetry.volume = Math.max(0, Math.min(100, action.level));
+          break;
         case "set_battery_saver":
           telemetry.batterySaver = action.enabled !== false;
           break;
@@ -128,6 +135,19 @@ export async function executeActionsForDevice(store, device, actions) {
         case "notify":
         case "send_sms":
         case "make_call":
+        case "media_control":
+        case "speak_tts":
+        case "ring_phone":
+        case "take_screenshot":
+        case "set_timer":
+        case "open_url":
+        case "navigate_maps":
+        case "play_youtube":
+        case "copy_clipboard":
+        case "ui_tap":
+        case "ui_scroll":
+        case "open_quick_settings":
+        case "open_notifications":
           break;
         default:
           break;
