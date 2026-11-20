@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
 class QuickCommandActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked) { finish(); return }
         val config = JarvisConfig(applicationContext)
         setContent {
             var text by rememberSaveable { mutableStateOf("") }

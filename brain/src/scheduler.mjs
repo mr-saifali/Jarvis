@@ -117,7 +117,7 @@ export function isTaskDue(task, now = new Date(), timeZone = "Asia/Kolkata") {
   return false;
 }
 
-export function matchesRuleCondition(rule, eventType, payload = {}, now = new Date()) {
+export function matchesRuleCondition(rule, eventType, payload = {}, now = new Date(), previous = null) {
   if (!rule || !rule.enabled || rule.event_type !== eventType) return false;
 
   const cooldownMs = Math.max(0, Number(rule.cooldown_seconds ?? 60)) * 1000;
@@ -152,6 +152,15 @@ export function matchesRuleCondition(rule, eventType, payload = {}, now = new Da
   }
 
   if (eventType === "telemetry") {
+    if (cond.on_entry) {
+      // No fabricated transition on initial registration or incomplete samples.
+      const fields = Object.keys(cond).filter(k=>k!=='on_entry').map(k=>k.split('_')[0]);
+      if (!previous || fields.some(k=>previous[k]==null || payload[k]==null)) return false;
+      if (matchesRuleCondition({...rule,last_triggered_at:null,condition:{...cond,on_entry:false}},eventType,previous,now)) return false;
+    }
+    if (typeof cond.charging === 'boolean' && payload.charging !== cond.charging) return false;
+    if (typeof cond.battery_gte === 'number' && !(Number.isFinite(payload.battery) && payload.battery >= cond.battery_gte)) return false;
+    if (typeof cond.volume_gte === 'number' && !(Number.isFinite(payload.volume) && payload.volume >= cond.volume_gte)) return false;
     if (typeof cond.battery_lt === "number") {
       if (typeof payload.battery !== "number" || !(payload.battery < cond.battery_lt)) {
         return false;

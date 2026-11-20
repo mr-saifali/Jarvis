@@ -1,3 +1,4 @@
+import {compoundRequest,workflowInstruction,workflowSchema,validateWorkflow} from './flash-workflow.mjs';
 /**
  * J.A.R.V.I.S. Natural Language Planner & Optional LLM Reasoning
  */
@@ -35,6 +36,11 @@ function formatHHMM(hour, minute) {
 function extractActionsDeterministic(text) {
   const actions = [];
   const lower = text.toLowerCase();
+  const settings = lower.trim().match(/^(?:open\s+)?(wi-?fi|bluetooth|sound|battery)\s+(?:ki\s+)?settings?(?:\s+(?:kholo|open karo))?[.!]?$/);
+  if (settings) {
+    const panel = settings[1].replace('-', '');
+    return [{type:'open_settings',panel,label:`Open ${panel} settings`,requiresUnlock:true}];
+  }
 
   // Flashlight / Torch
   if (/\b(?:turn\s+on|enable|activate)\s+(?:the\s+)?(?:flashlight|torch)\b/i.test(text) || /^(?:flashlight|torch)\s+on$/i.test(text.trim())) {
@@ -620,6 +626,39 @@ export function planDeterministic(prompt, now = new Date()) {
 
 export async function planCommand(prompt, llmConfig = null, now = new Date()) {
   const deterministic = planDeterministic(prompt, now);
+
+  // Only send unresolved immediate commands to the managed Flash endpoint. Known
+  // routines, schedules and deterministic actions need no round trip or quota.
+  if (process.env.GEMINI_API_KEY) {
+    if (deterministic.kind !== "command") return deterministic;
+    const multi = compoundRequest(prompt);
+    if (!multi && !deterministic.actions.some(a => a.label?.startsWith("Execute intent:"))) return deterministic;
+    const unavailable = () => {
+      if (multi) throw Object.assign(new Error("Workflow planner unavailable. Nothing was queued; try again or send individual commands."), {status:400});
+      return deterministic;
+    };
+    try {
+      const model = process.env.GEMINI_FLASH_MODEL || "gemini-2.5-flash";
+      if (!/^gemini-[a-z0-9.-]*flash[a-z0-9.-]*$/.test(model)) return unavailable();
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: "POST", redirect: "error", signal: AbortSignal.timeout(8000),
+        headers: {"Content-Type":"application/json", "x-goog-api-key":process.env.GEMINI_API_KEY},
+        body: JSON.stringify({
+          systemInstruction: {parts:[{text:multi ? workflowInstruction : "Translate this Hindi, Hinglish or English phone request into a single clear English imperative for a deterministic Android command parser. Keep names, numbers and message text intact. Do not add actions. Return JSON with one string field command. If ambiguous or not an Android command, return an empty command."}]},
+          contents: [{role:"user",parts:[{text:prompt}]}],
+          generationConfig: {temperature:0.1,responseMimeType:"application/json",...(multi ? {responseSchema:workflowSchema} : {})}
+        })
+      });
+      if (!res.ok) return unavailable();
+      const data = await res.json();
+      const payload = JSON.parse(data.candidates?.[0]?.content?.parts?.map(p=>p.text || "").join("") || "{}");
+      if (multi) return validateWorkflow(payload);
+      const {command} = payload;
+      if (typeof command !== "string" || !command.trim() || command.length > 1500) return deterministic;
+      const translated = planDeterministic(command, now);
+      return translated.kind === "command" && !translated.actions.some(a=>a.label?.startsWith("Execute intent:")) ? translated : deterministic;
+    } catch (err) { if (err.status===400) throw err; return unavailable(); }
+  }
 
   // If LLM is disabled or not configured, return deterministic plan immediately
   if (!llmConfig?.enabled || !llmConfig?.apiKey || !llmConfig?.baseUrl) {

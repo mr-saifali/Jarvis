@@ -18,6 +18,7 @@
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 
     <queries>
         <intent>
@@ -69,6 +70,15 @@
         <activity android:name=".quick.QuickCommandActivity" android:exported="false"
             android:excludeFromRecents="true" android:taskAffinity="${applicationId}.quick"
             android:theme="@android:style/Theme.Material.Light.Dialog.NoActionBar" />
+        <!-- Explicit user selection in Android's default assistant picker. The panel
+             ignores caller extras and only submits a command after the user taps Send. -->
+        <activity-alias android:name=".quick.AssistEntry" android:exported="true"
+            android:label="@string/app_name" android:targetActivity=".quick.QuickCommandActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
         <service android:name=".quick.CommandTile" android:exported="true"
             android:label="Ask Jarvis" android:icon="@drawable/ic_ask_jarvis"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">

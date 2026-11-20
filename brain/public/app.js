@@ -238,7 +238,15 @@ function renderTasks() {
     .join("");
 }
 
+function previewRecipe() {
+  const select = $("#recipe-select");
+  $("#recipe-preview").textContent = state.data?.automationCatalog?.find(r=>r.id===select.value)?.description || "";
+}
 function renderRules() {
+  const recipes=state.data?.automationCatalog || [];
+  const select=$("#recipe-select");
+  if(select.options.length!==recipes.length) select.replaceChildren(...recipes.map(r=>new Option(`${r.category} · ${r.name}`,r.id)));
+  previewRecipe();
   const rules = state.data?.rules || [];
   $("#count-rules").textContent = rules.length;
   const list = $("#rules-list");
@@ -389,6 +397,11 @@ function applySavedTheme() {
 }
 
 function setupListeners() {
+  $("#recipe-select").addEventListener("change",previewRecipe);
+  for(const verb of ['enable','disable']) $(`#recipe-${verb}`).addEventListener('click',()=>{
+    const id=$("#recipe-select").value;
+    if(id) sendCommand(`${verb} automation ${id}`);
+  });
   // Navigation
   $$(".nav-item[data-page]").forEach((btn) => {
     btn.addEventListener("click", () => switchPage(btn.getAttribute("data-page")));

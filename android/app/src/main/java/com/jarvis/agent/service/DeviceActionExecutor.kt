@@ -39,7 +39,6 @@ class DeviceActionExecutor(private val context: Context) {
     suspend fun executeActions(actions: JSONArray, speakResult: Boolean = false): Pair<String, JSONArray> {
         val resultActions = JSONArray()
         val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-        val isLocked = keyguard.isKeyguardLocked
         var blocked = 0
         var executed = 0
         var lastLabel = ""
@@ -50,7 +49,11 @@ class DeviceActionExecutor(private val context: Context) {
             val type = action.optString("type", "")
             val requiresUnlock = action.optBoolean("requiresUnlock", false)
 
-            if (isLocked && requiresUnlock) {
+            if (blocked > 0 && action.optBoolean("stopOnFailure")) {
+                resultActions.put(action.put("status", "skipped").put("detail", "Earlier workflow step failed"))
+                continue
+            }
+            if (keyguard.isKeyguardLocked && requiresUnlock) {
                 blocked++
                 action.put("status", "blocked")
                 action.put("detail", "Device locked — UI action paused")
@@ -75,13 +78,25 @@ class DeviceActionExecutor(private val context: Context) {
             JarvisVoiceEngine.speak(context, "Done, sir. $lastLabel")
         }
 
-        val status = if (executed == 0 && blocked > 0) "failed" else "completed"
+        val workflow = (0 until actions.length()).any { actions.optJSONObject(it)?.optBoolean("stopOnFailure") == true }
+        val status = if ((executed == 0 || workflow) && blocked > 0) "failed" else "completed"
         return status to resultActions
     }
 
     private suspend fun executeSingle(type: String, action: JSONObject): Boolean {
         return try {
             when (type) {
+                "open_settings" -> {
+                    val screen = when (action.optString("panel")) {
+                        "wifi" -> Settings.ACTION_WIFI_SETTINGS
+                        "bluetooth" -> Settings.ACTION_BLUETOOTH_SETTINGS
+                        "sound" -> Settings.ACTION_SOUND_SETTINGS
+                        "battery" -> Settings.ACTION_BATTERY_SAVER_SETTINGS
+                        else -> return false
+                    }
+                    context.startActivity(Intent(screen).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    true
+                }
                 "open_app" -> openApp(action.optString("app", ""))
                 "send_message" -> {
                     val recipient = action.optString("recipient", "")

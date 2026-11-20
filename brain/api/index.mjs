@@ -1,3 +1,4 @@
+import {catalog} from '../src/automation-library.mjs';
 /**
  * J.A.R.V.I.S. Brain Serverless & HTTP API Handler
  * Runs both as Vercel Serverless Function (/api/index.mjs) and inside src/server.mjs
@@ -160,6 +161,7 @@ export function createApiHandler(storeFactory = () => createStoreFromEnv(process
           ok: true,
           apkUrl: APK_DIRECT_URL,
           settings: safeSettings,
+          automationCatalog: catalog,
           devices,
           commands,
           tasks,
@@ -291,7 +293,7 @@ export function createApiHandler(storeFactory = () => createStoreFromEnv(process
           last_seen_at: new Date().toISOString(),
           telemetry: nextTelemetry
         });
-        const triggered = await evaluateRules(store, "telemetry", nextTelemetry, device.id);
+        const triggered = await evaluateRules(store, "telemetry", nextTelemetry, device.id, new Date(), device.telemetry);
         return sendJson(res, 200, { ok: true, device: updated, triggered });
       }
 
@@ -341,7 +343,7 @@ export function createApiHandler(storeFactory = () => createStoreFromEnv(process
           telemetry
         });
 
-        await evaluateRules(store, "telemetry", telemetry, device.id);
+        await evaluateRules(store, "telemetry", telemetry, device.id, new Date(), existing?.telemetry);
         const pending = await claimCommands(store, device.id);
         return sendJson(res, 200, { ok: true, device, commands: pending });
       }
