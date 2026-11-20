@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
+    <form id="operator-login"><label>Operator token <input name="secret" type="password" required></label> <button>Unlock dashboard</button></form>
   <div class="workspace">
     <!-- Mobile Top Bar -->
     <header class="mobile-bar">
@@ -129,11 +130,11 @@
           <div class="callout-body">
             <div class="callout-title">Pair your real Android phone in 1 minute</div>
             <p class="callout-text">
-              Download and install the Jarvis APK on your Android phone, tap <strong>Save &amp; Connect</strong> (your Brain URL and Pairing Token are pre-filled), and grant Accessibility + Notification access.
+              Download and install the Jarvis APK on your Android phone, tap <strong>Save &amp; Connect</strong> (enter your HTTPS Brain URL and device-specific token), and grant Accessibility + Notification access.
             </p>
             <div class="callout-meta">
               <span><strong>Brain URL:</strong> <code id="inline-origin">https://marcuss.vercel.app</code></span>
-              <span><strong>Token:</strong> <code id="inline-token">jarvis-d4d0cd67</code></span>
+              <span><strong>Token:</strong> <code id="inline-token">Set per device</code></span>
               <button type="button" class="btn btn-ghost btn-xs" id="btn-copy-inline-token">Copy Token</button>
             </div>
           </div>
@@ -397,7 +398,7 @@
         <div class="block-card highlight-card">
           <div class="block-title">Step 1 — Download &amp; Install the APK</div>
           <p class="helper-text">
-            Direct Android APK build (includes pre-filled Brain URL and Pairing Token). Open this page on your phone and tap below, or transfer the APK to your phone.
+            Direct Android APK build (requires a Brain URL and device-specific token). Open this page on your phone and tap below, or transfer the APK to your phone.
           </p>
           <div class="btn-row">
             <a

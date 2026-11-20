@@ -11,7 +11,8 @@ export async function resolveTargetDevice(store, requestedDeviceId) {
   const devices = await store.listDevices();
   if (requestedDeviceId && requestedDeviceId !== "auto") {
     const exact = devices.find((d) => d.id === requestedDeviceId);
-    if (exact) return exact;
+    if (!exact) throw new Error("Unknown target device");
+    return exact;
   }
   const onlineAndroid = devices.find((d) => d.type !== "simulator" && d.online);
   if (onlineAndroid) return onlineAndroid;
@@ -31,7 +32,7 @@ export async function executeActionsForDevice(store, device, actions) {
   for (const action of actions) {
     if (action.type === "summarize_notifications") {
       const notifs = await store.listNotifications(20);
-      const unread = notifs.filter((n) => !n.read);
+      const unread = notifs.filter((n) => !n.read && n.device_id === device?.id);
       summaryBuffer =
         unread.length > 0
           ? unread
@@ -193,6 +194,8 @@ export async function dispatchCommand(store, { prompt, deviceId = "auto", source
   const settings = await store.getSettings();
   const plan = await planCommand(prompt, settings.llm_config);
 
+  if (source === "device" && (plan.kind !== "command" || !(await store.getDevice(deviceId)))) throw new Error("Device must be registered and issue immediate commands only");
+
   if (plan.kind === "schedule" && plan.schedule) {
     const task = await store.createTask({
       id: makeId("task"),
@@ -269,6 +272,7 @@ export async function approveCommand(store, commandId) {
   if (!cmd) return null;
   if (cmd.status !== "awaiting_approval") return cmd;
 
+  if (!(await store.updateCommand(commandId, {status:"approving"}, "awaiting_approval"))) return store.getCommand(commandId);
   const device = await resolveTargetDevice(store, cmd.device_id);
   const exec = await executeActionsForDevice(store, device, cmd.actions || []);
   const updated = await store.updateCommand(commandId, {
@@ -283,12 +287,20 @@ export async function approveCommand(store, commandId) {
 export async function cancelCommand(store, commandId) {
   const cmd = await store.getCommand(commandId);
   if (!cmd) return null;
+  if (!["awaiting_approval", "queued"].includes(cmd.status)) return cmd;
   const updated = await store.updateCommand(commandId, {
     status: "cancelled",
     result_message: "Cancelled by user"
-  });
+  }, cmd.status);
   await store.addLog("info", "brain", `Cancelled command ${commandId}`);
   return updated;
+}
+
+async function automationResult(store, device, actions, settings) {
+  if (settings.confirm_sensitive_actions && planHasSensitiveActions(actions)) {
+    return {actions, status: "awaiting_approval", result_message: "Review this automation run before execution"};
+  }
+  return executeActionsForDevice(store, device, actions);
 }
 
 export async function tickScheduler(store, now = new Date()) {
@@ -301,8 +313,15 @@ export async function tickScheduler(store, now = new Date()) {
     if (!isTaskDue(task, now, timeZone)) continue;
 
     const parts = getZonedParts(now, timeZone);
+    const claimed = await store.updateTask(task.id, {
+      last_run_at: now.toISOString(),
+      last_run_minute_key: parts.minuteKey,
+      run_count: Number(task.run_count || 0) + 1,
+      enabled: task.schedule_type === "once" ? false : task.enabled
+    }, task.run_count);
+    if (!claimed) continue;
     const device = await resolveTargetDevice(store, task.target_device_id);
-    const exec = await executeActionsForDevice(store, device, task.actions || []);
+    const exec = await automationResult(store, device, task.actions || [], settings);
 
     const cmd = await store.createCommand({
       id: makeId("cmd"),
@@ -314,13 +333,6 @@ export async function tickScheduler(store, now = new Date()) {
       actions: exec.actions,
       status: exec.status,
       result_message: exec.result_message
-    });
-
-    await store.updateTask(task.id, {
-      last_run_at: now.toISOString(),
-      last_run_minute_key: parts.minuteKey,
-      run_count: Number(task.run_count || 0) + 1,
-      enabled: task.schedule_type === "once" ? false : task.enabled
     });
 
     await store.addLog("info", "scheduler", `Triggered scheduled task "${task.name}"`);
@@ -341,8 +353,9 @@ export async function evaluateRules(store, eventType, payload, deviceId, now = n
       rule.target_device_id && rule.target_device_id !== "auto"
         ? rule.target_device_id
         : deviceId;
+    if (targetId !== deviceId) continue;
     const device = await resolveTargetDevice(store, targetId);
-    const exec = await executeActionsForDevice(store, device, rule.actions || []);
+    const exec = await automationResult(store, device, rule.actions || [], await store.getSettings());
 
     const cmd = await store.createCommand({
       id: makeId("cmd"),

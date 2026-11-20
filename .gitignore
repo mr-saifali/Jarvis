@@ -22,3 +22,4 @@ android/.idea/
 # OS / Logs
 .DS_Store
 *.log
+*.p12

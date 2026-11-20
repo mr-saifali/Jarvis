@@ -37,10 +37,11 @@ function showToast(msg) {
   state.toastTimer = setTimeout(() => el.classList.add("hidden"), 3000);
 }
 
+let operatorToken = "";
 async function api(path, options = {}) {
   const res = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options
+    ...options,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${operatorToken}`, ...(options.headers || {}) }
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok || json.ok === false) {
@@ -143,7 +144,7 @@ function renderHeaderAndConnectInfo() {
   $("#status-dot").classList.remove("offline");
 
   const origin = window.location.origin;
-  const token = settings.pairing_token || "jarvis-d4d0cd67";
+  const token = "<your device-specific token>";
   $("#inline-origin").textContent = origin;
   $("#inline-token").textContent = token;
   $("#connect-origin").textContent = origin;
@@ -737,5 +738,11 @@ function setupListeners() {
 
 applySavedTheme();
 setupListeners();
+document.querySelector("#operator-login").onsubmit = event => {
+  event.preventDefault();
+  operatorToken = event.target.elements.secret.value;
+  event.target.reset();
+  refreshState();
+};
 refreshState();
 setInterval(refreshState, 3000);

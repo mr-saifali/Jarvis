@@ -9,7 +9,10 @@ import { matchesCron, isTaskDue, matchesRuleCondition } from "../src/scheduler.m
 import { LocalJsonStore, SupabaseRestStore } from "../src/store.mjs";
 import { createApiHandler } from "../api/index.mjs";
 
-function invokeHandler(handler, { method = "GET", url = "/api/health", headers = {}, body = null }) {
+process.env.JARVIS_OPERATOR_TOKEN = "test-operator";
+process.env.JARVIS_DEVICE_TOKENS = JSON.stringify({"pixel-real":"test-device"});
+
+function invokeHandler(handler, { method = "GET", url = "/api/health", headers = {authorization:"Bearer test-operator"}, body = null }) {
   return new Promise((resolve, reject) => {
     const payload = body !== null ? JSON.stringify(body) : "";
     const req = {
@@ -170,7 +173,7 @@ test("API authenticates real Android devices via pairing token", async () => {
     const good = await invokeHandler(handler, {
       method: "POST",
       url: "/api/devices/register",
-      headers: { "x-jarvis-token": "jarvis-d4d0cd67" },
+      headers: { "x-jarvis-token": "test-device" },
       body: { deviceId: "pixel-real", name: "Pixel Real", telemetry: { battery: 91 } }
     });
     assert.equal(good.status, 200);
@@ -185,7 +188,7 @@ test("API works against mocked Supabase PostgREST backend", async () => {
     jarvis_settings: [
       {
         id: "default",
-        pairing_token: "jarvis-d4d0cd67",
+        pairing_token: "test-device",
         confirm_sensitive_actions: true,
         timezone: "Asia/Kolkata",
         llm_config: { enabled: false, model: "gpt-4o-mini", baseUrl: "", apiKey: "" }
@@ -256,4 +259,54 @@ test("API works against mocked Supabase PostgREST backend", async () => {
   } finally {
     mockServer.close();
   }
+});
+
+test("Operator and device boundaries; concurrent polls and retried acknowledgements", async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-boundary-"));
+  t.after(() => fs.rmSync(dir, {recursive:true, force:true}));
+  const store = new LocalJsonStore(path.join(dir, "db"));
+  const handler = createApiHandler(() => store);
+  const call = (url, headers, body) => invokeHandler(handler, {url, headers, body, method: body ? "POST" : "GET"});
+  const device = {"x-jarvis-token":"test-device"};
+  for (const [url, body] of [["/api/state"], ["/api/settings", {}], ["/api/command", {}], ["/api/commands/c/approve", {}], ["/api/notifications", {fromSimulator:true}]]) {
+    assert.equal((await call(url, {}, body)).status, 401);
+  }
+  assert.equal((await call("/api/state", device)).status, 401);
+  assert.equal((await call("/api/commands/poll?deviceId=other", device)).status, 401);
+  assert.equal((await call("/api/notifications", device, {fromSimulator:true})).status, 401);
+  const state = await call("/api/state", {authorization:"Bearer test-operator"});
+  assert.equal("pairing_token" in state.data.settings, false);
+  await store.createCommand({id:"foreign", device_id:"other", status:"executing"});
+  const ack = commandId => call("/api/commands/ack", device, {commandId, status:"completed"});
+  assert.equal((await ack("foreign")).status, 401);
+  await store.createCommand({id:"owned", device_id:"pixel-real", status:"queued"});
+  assert.equal((await ack("owned")).status, 409);
+  const poll = () => call("/api/commands/poll?deviceId=pixel-real", device);
+  const results = await Promise.all([poll(), poll()]);
+  assert.deepEqual(results.flatMap(x => x.data.commands.map(c => c.id)), ["owned"]);
+  assert.equal((await ack("owned")).status, 200);
+  assert.equal((await ack("owned")).status, 200);
+  assert.deepEqual((await poll()).data.commands, []);
+});
+
+test("Concurrent ticks claim one overdue occurrence and sensitive automations await approval", async t => {
+  const {tickScheduler, evaluateRules} = await import("../src/engine.mjs");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-tick-"));
+  t.after(() => fs.rmSync(dir, {recursive:true, force:true}));
+  const store = new LocalJsonStore(path.join(dir, "db"));
+  const automation = {name:"Message", actions:[{type:"send_message"}], target_device_id:"sim-pixel-9"};
+  await store.createTask({...automation, id:"once", schedule_type:"once", run_at:"2020-01-01T00:00:00Z"});
+  assert.equal((await Promise.all([tickScheduler(store), tickScheduler(store)])).flat().length, 1);
+  await store.createRule({...automation, id:"rule", enabled:true, event_type:"notification", condition:{}});
+  await evaluateRules(store, "notification", {}, "sim-pixel-9");
+  assert.deepEqual((await store.listCommands()).map(c => c.status), ["awaiting_approval", "awaiting_approval"]);
+});
+
+test("Malformed local database is preserved", async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-corrupt-"));
+  t.after(() => fs.rmSync(dir, {recursive:true, force:true}));
+  const file = path.join(dir, "db");
+  fs.writeFileSync(file, "truncated");
+  await assert.rejects(new LocalJsonStore(file).getSettings());
+  assert.equal(fs.readFileSync(file, "utf8"), "truncated");
 });

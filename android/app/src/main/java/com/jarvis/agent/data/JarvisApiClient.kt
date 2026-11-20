@@ -63,6 +63,7 @@ class JarvisApiClient(private val config: JarvisConfig) {
                 put("capabilities", capabilities)
                 put("telemetry", telemetry)
             }
+            flushAcks()
             val res = postJson("/api/devices/heartbeat", body)
             val arr = res.optJSONArray("commands") ?: JSONArray()
             val list = mutableListOf<BrainCommand>()
@@ -91,7 +92,15 @@ class JarvisApiClient(private val config: JarvisConfig) {
             put("resultMessage", resultMessage)
             put("actions", actions)
         }
-        postJson("/api/commands/ack", body)
+        config.saveAck(commandId, body.toString())
+        flushAcks()
+    }
+
+    private fun flushAcks() {
+        for ((key, json) in config.pendingAcks()) {
+            postJson("/api/commands/ack", JSONObject(json as String))
+            config.clearAck(key)
+        }
     }
 
     suspend fun postNotification(app: String, sender: String, text: String) =
