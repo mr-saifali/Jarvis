@@ -60,19 +60,35 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - name: Prepare release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.JARVIS_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          dir="$GITHUB_WORKSPACE/android/.release-signing"
+          mkdir -m 700 "$dir"
+          key="$dir/release.p12"
+          printf '%s' "${KEYSTORE_BASE64:?Missing JARVIS_KEYSTORE_BASE64 in android-release}" | base64 --decode > "$key"
+          test -s "$key" || { echo '::error::Decoded release keystore is empty'; exit 1; }
+          printf 'JARVIS_KEYSTORE=%s\n' "$key" >> "$GITHUB_ENV"
+
       - name: Build signed APK
         working-directory: android
         env:
-          KEYSTORE_BASE64: ${{ secrets.JARVIS_KEYSTORE_BASE64 }}
           JARVIS_STORE_PASSWORD: ${{ secrets.JARVIS_STORE_PASSWORD }}
           JARVIS_KEY_ALIAS: ${{ secrets.JARVIS_KEY_ALIAS }}
           JARVIS_KEY_PASSWORD: ${{ secrets.JARVIS_KEY_PASSWORD }}
         run: |
-          umask 077
-          export JARVIS_KEYSTORE="$RUNNER_TEMP/release.p12"
-          trap 'rm -f "$JARVIS_KEYSTORE"' EXIT
-          printf %s "${KEYSTORE_BASE64:?}" | base64 --decode > "$JARVIS_KEYSTORE"
+          set -euo pipefail
+          : "${JARVIS_STORE_PASSWORD:?Missing store password}" "${JARVIS_KEY_ALIAS:?Missing key alias}" "${JARVIS_KEY_PASSWORD:?Missing key password}"
+          test -r "$JARVIS_KEYSTORE" && test -s "$JARVIS_KEYSTORE" || { echo '::error::Prepared signing file is missing or unreadable'; exit 1; }
           ./gradlew assembleRelease --no-daemon
+
+      - name: Remove release keystore
+        if: always()
+        run: rm -f -- "$GITHUB_WORKSPACE/android/.release-signing/release.p12"
+
       - name: Verify APK Signature
         run: |
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
