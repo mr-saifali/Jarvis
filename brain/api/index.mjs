@@ -52,7 +52,14 @@ const deviceRoutes = new Set(["/api/devices/register", "/api/devices/heartbeat",
 function deviceIdentity(req) {
   const token = req.headers["x-jarvis-token"];
   if (!token) return null;
-  const matches = Object.entries(JSON.parse(process.env.JARVIS_DEVICE_TOKENS || "{}"))
+  let devices;
+  try {
+    devices = JSON.parse(process.env.JARVIS_DEVICE_TOKENS || "{}");
+    // Some secret editors serialize the whole JSON map as a JSON string.
+    if (typeof devices === "string") devices = JSON.parse(devices);
+  } catch { return null; }
+  if (!devices || typeof devices !== "object" || Array.isArray(devices)) return null;
+  const matches = Object.entries(devices)
     .filter(([, secret]) => secret === token);
   return matches.length === 1 && !["sim-pixel-9", "auto"].includes(matches[0][0]) ? matches[0][0] : null;
 }
