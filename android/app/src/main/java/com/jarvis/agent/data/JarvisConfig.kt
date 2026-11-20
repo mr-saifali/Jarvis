@@ -23,12 +23,19 @@ object JarvisLogStore {
 class JarvisConfig(context: Context) {
     private val prefs = context.getSharedPreferences("jarvis_agent_prefs", Context.MODE_PRIVATE)
 
+    private fun ackPrefix() = "ack:$brainUrl:$deviceId:"
+    fun saveAck(id: String, json: String) {
+        check(prefs.edit().putString(ackPrefix() + id, json).commit())
+    }
+    fun pendingAcks() = prefs.all.filterKeys { it.startsWith(ackPrefix()) }
+    fun clearAck(key: String) { prefs.edit().remove(key).apply() }
+
     var brainUrl: String
-        get() = prefs.getString("brain_url", "https://marcuss.vercel.app") ?: "https://marcuss.vercel.app"
+        get() = prefs.getString("brain_url", "") ?: ""
         set(value) = prefs.edit().putString("brain_url", value.trim().trimEnd('/')).apply()
 
     var pairingToken: String
-        get() = prefs.getString("pairing_token", "jarvis-d4d0cd67") ?: "jarvis-d4d0cd67"
+        get() = prefs.getString("pairing_token", "") ?: ""
         set(value) = prefs.edit().putString("pairing_token", value.trim()).apply()
 
     var voiceFeedback: Boolean

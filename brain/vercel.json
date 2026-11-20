@@ -3,6 +3,7 @@
   "framework": null,
   "buildCommand": "",
   "outputDirectory": "public",
+  "crons": [{ "path": "/api/cron/tick", "schedule": "* * * * *" }],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index.mjs" }
   ]

@@ -7,7 +7,7 @@ Test your J.A.R.V.I.S. Brain with your real Android phone in under 5 minutes wit
 2. Copy `termux-jarvis-bridge.sh` to your phone and export your Brain URL & Pairing Token:
    ```bash
    export JARVIS_URL="https://<your-vercel-domain>"
-   export JARVIS_TOKEN="jarvis-d4d0cd67"
+   export JARVIS_TOKEN="<token provisioned for this device ID>"
    bash termux-jarvis-bridge.sh
    ```
 
@@ -15,7 +15,7 @@ Test your J.A.R.V.I.S. Brain with your real Android phone in under 5 minutes wit
 1. Create a MacroDroid **Trigger**: Regular Interval (e.g., every 1 minute) or Notification Received.
 2. Add **HTTP Request (POST)** action to `https://<your-vercel-domain>/api/devices/heartbeat`:
    - Header: `Content-Type: application/json`
-   - Header: `X-Jarvis-Token: jarvis-d4d0cd67`
+   - Header: `X-Jarvis-Token: <token provisioned for this device ID>`
    - Body:
      ```json
      {

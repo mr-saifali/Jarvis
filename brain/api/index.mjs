@@ -19,7 +19,7 @@ const APK_FALLBACK_URL = "https://github.com/mr-saifali/Jarvis/releases";
 function sendJson(res, status, payload) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Cache-Control", "no-store");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Jarvis-Token");
   res.end(JSON.stringify(payload));
@@ -47,24 +47,25 @@ async function readBody(req) {
   }
 }
 
-function extractToken(req, urlObj, body = {}) {
-  const headerToken = req.headers["x-jarvis-token"];
-  if (headerToken) return String(headerToken).trim();
-  const auth = req.headers["authorization"];
-  if (auth && auth.startsWith("Bearer ")) return auth.slice(7).trim();
-  const queryToken = urlObj.searchParams.get("token");
-  if (queryToken) return queryToken.trim();
-  if (body?.token) return String(body.token).trim();
-  return "";
+const deviceRoutes = new Set(["/api/devices/register", "/api/devices/heartbeat", "/api/commands/poll", "/api/commands/ack"]);
+function deviceIdentity(req) {
+  const token = req.headers["x-jarvis-token"];
+  if (!token) return null;
+  const matches = Object.entries(JSON.parse(process.env.JARVIS_DEVICE_TOKENS || "{}"))
+    .filter(([, secret]) => secret === token);
+  return matches.length === 1 && !["sim-pixel-9", "auto"].includes(matches[0][0]) ? matches[0][0] : null;
 }
-
-async function verifyDeviceToken(store, req, urlObj, body) {
-  const settings = await store.getSettings();
-  const provided = extractToken(req, urlObj, body);
-  if (!provided || provided !== settings.pairing_token) {
-    return false;
+function publicSettings({confirm_sensitive_actions, timezone, llm_config = {}}) {
+  const {enabled, provider, model, baseUrl, apiKey} = llm_config;
+  return {confirm_sensitive_actions, timezone, llm_config: {enabled, provider, model, baseUrl, apiKey: apiKey ? "••••••••" : ""}};
+}
+async function claimCommands(store, id) {
+  const claimed = [];
+  for (const cmd of await store.listPendingCommandsForDevice(id)) {
+    const row = await store.updateCommand(cmd.id, {status: "executing"}, "queued");
+    if (row) claimed.push(row);
   }
-  return true;
+  return claimed;
 }
 
 export function createApiHandler(storeFactory = () => createStoreFromEnv(process.env)) {
@@ -134,10 +135,13 @@ export function createApiHandler(storeFactory = () => createStoreFromEnv(process
         });
       }
 
+      const operator = !!process.env.JARVIS_OPERATOR_TOKEN && req.headers.authorization === `Bearer ${process.env.JARVIS_OPERATOR_TOKEN}`;
+      const cron = pathname === "/api/cron/tick" && !!process.env.CRON_SECRET && req.headers.authorization === `Bearer ${process.env.CRON_SECRET}`;
+      const identity = deviceIdentity(req);
+      const denied = () => sendJson(res, 401, {ok:false, error:"Authorization required"});
+      if (deviceRoutes.has(pathname) ? !identity : !operator && !cron && !(identity && ["/api/notifications", "/api/command"].includes(pathname))) return denied();
       // Full dashboard state
       if (method === "GET" && pathname === "/api/state") {
-        // Trigger any due scheduled tasks lazily (essential for serverless Vercel)
-        await tickScheduler(store).catch(() => {});
 
         const [settings, devices, commands, tasks, rules, notifications, vault, logs] =
           await Promise.all([
@@ -151,14 +155,7 @@ export function createApiHandler(storeFactory = () => createStoreFromEnv(process
             store.listLogs(60)
           ]);
 
-        const safeSettings = {
-          ...settings,
-          llm_config: {
-            ...(settings.llm_config || {}),
-            apiKey: settings.llm_config?.apiKey ? "••••••••" : ""
-          }
-        };
-
+        const safeSettings = publicSettings(settings);
         return sendJson(res, 200, {
           ok: true,
           apkUrl: APK_DIRECT_URL,
@@ -186,10 +183,11 @@ export function createApiHandler(storeFactory = () => createStoreFromEnv(process
         if (!prompt) {
           return sendJson(res, 400, { ok: false, error: "Command prompt is required" });
         }
+        if (identity && body.deviceId !== identity) return denied();
         const result = await dispatchCommand(store, {
           prompt,
           deviceId: body.deviceId || "auto",
-          source: body.source || "user"
+          source: identity ? "device" : "user"
         });
         return sendJson(res, 200, { ok: true, ...result });
       }
@@ -268,13 +266,7 @@ export function createApiHandler(storeFactory = () => createStoreFromEnv(process
         await store.addLog("info", "settings", "Updated Brain settings.");
         return sendJson(res, 200, {
           ok: true,
-          settings: {
-            ...settings,
-            llm_config: {
-              ...(settings.llm_config || {}),
-              apiKey: settings.llm_config?.apiKey ? "••••••••" : ""
-            }
-          }
+          settings: publicSettings(settings)
         });
       }
 
@@ -306,10 +298,8 @@ export function createApiHandler(storeFactory = () => createStoreFromEnv(process
       // Real Android device registration (pairing token required)
       if (method === "POST" && pathname === "/api/devices/register") {
         const body = await readBody(req);
-        if (!(await verifyDeviceToken(store, req, urlObj, body))) {
-          return sendJson(res, 401, { ok: false, error: "Invalid pairing token" });
-        }
         const id = String(body.deviceId || body.id || makeId("android"));
+        if (id !== identity) return denied();
         const device = await store.upsertDevice({
           id,
           name: String(body.name || body.model || "Android Phone"),
@@ -330,14 +320,11 @@ export function createApiHandler(storeFactory = () => createStoreFromEnv(process
       // Real Android device heartbeat + poll pending commands (pairing token required)
       if (method === "POST" && pathname === "/api/devices/heartbeat") {
         const body = await readBody(req);
-        if (!(await verifyDeviceToken(store, req, urlObj, body))) {
-          return sendJson(res, 401, { ok: false, error: "Invalid pairing token" });
-        }
-        await tickScheduler(store).catch(() => {});
 
         const id = String(body.deviceId || body.id || "");
         if (!id) return sendJson(res, 400, { ok: false, error: "deviceId is required" });
 
+        if (id !== identity) return denied();
         const existing = await store.getDevice(id);
         const telemetry = {
           ...(existing?.telemetry || {}),
@@ -355,40 +342,38 @@ export function createApiHandler(storeFactory = () => createStoreFromEnv(process
         });
 
         await evaluateRules(store, "telemetry", telemetry, device.id);
-        const pending = await store.listPendingCommandsForDevice(device.id);
+        const pending = await claimCommands(store, device.id);
         return sendJson(res, 200, { ok: true, device, commands: pending });
       }
 
       // Poll pending commands for Android device (pairing token required)
       if (method === "GET" && pathname === "/api/commands/poll") {
-        if (!(await verifyDeviceToken(store, req, urlObj))) {
-          return sendJson(res, 401, { ok: false, error: "Invalid pairing token" });
-        }
-        await tickScheduler(store).catch(() => {});
         const deviceId = urlObj.searchParams.get("deviceId") || "";
         if (!deviceId) {
           return sendJson(res, 400, { ok: false, error: "deviceId query param required" });
         }
-        const pending = await store.listPendingCommandsForDevice(deviceId);
+        if (deviceId !== identity) return denied();
+        const pending = await claimCommands(store, deviceId);
         return sendJson(res, 200, { ok: true, commands: pending });
       }
 
       // Acknowledge executed command from Android device (pairing token required)
       if (method === "POST" && pathname === "/api/commands/ack") {
         const body = await readBody(req);
-        if (!(await verifyDeviceToken(store, req, urlObj, body))) {
-          return sendJson(res, 401, { ok: false, error: "Invalid pairing token" });
-        }
         const commandId = String(body.commandId || "");
         if (!commandId) {
           return sendJson(res, 400, { ok: false, error: "commandId is required" });
         }
+        const prior = await store.getCommand(commandId);
+        if (!prior || prior.device_id !== identity) return denied();
+        if (!["completed", "failed"].includes(body.status)) return sendJson(res, 400, {error:"Invalid result"});
+        if (prior.status === body.status) return sendJson(res, 200, {ok:true});
         const updated = await store.updateCommand(commandId, {
           status: body.status || "completed",
           result_message: body.resultMessage || "Executed on Android device",
           ...(Array.isArray(body.actions) ? { actions: body.actions } : {})
-        });
-        if (!updated) return sendJson(res, 404, { ok: false, error: "Command not found" });
+        }, "executing");
+        if (!updated) return sendJson(res, 409, {error:"Not executing"});
         await store.addLog(
           updated.status === "failed" ? "error" : "info",
           "android",
@@ -401,12 +386,7 @@ export function createApiHandler(storeFactory = () => createStoreFromEnv(process
       if (method === "POST" && pathname === "/api/notifications") {
         const body = await readBody(req);
         const deviceId = String(body.deviceId || "sim-pixel-9");
-        // Require token if sent from a non-simulator device
-        if (deviceId !== "sim-pixel-9" && !body.fromSimulator) {
-          if (!(await verifyDeviceToken(store, req, urlObj, body))) {
-            return sendJson(res, 401, { ok: false, error: "Invalid pairing token" });
-          }
-        }
+        if (identity ? deviceId !== identity : deviceId !== "sim-pixel-9") return denied();
         const notif = await store.createNotification({
           id: makeId("notif"),
           device_id: deviceId,

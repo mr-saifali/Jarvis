@@ -116,5 +116,5 @@ ALTER TABLE public.jarvis_logs ENABLE ROW LEVEL SECURITY;
 
 -- Initial Seed
 INSERT INTO public.jarvis_settings (id, pairing_token, confirm_sensitive_actions, timezone)
-VALUES ('default', 'jarvis-d4d0cd67', true, 'Asia/Kolkata')
+VALUES ('default', '', true, 'Asia/Kolkata')
 ON CONFLICT (id) DO NOTHING;

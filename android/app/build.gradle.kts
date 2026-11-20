@@ -17,26 +17,22 @@ android {
     }
 
     signingConfigs {
-        create("sideload") {
-            storeFile = file("sideload.p12")
-            storePassword = "jarvis123"
-            keyAlias = "jarvis"
-            keyPassword = "jarvis123"
-            storeType = "PKCS12"
-            enableV1Signing = true
-            enableV2Signing = true
-            enableV3Signing = true
+        System.getenv("JARVIS_KEYSTORE")?.let { keyFile ->
+            create("releaseKey") {
+                storeFile = file(keyFile)
+                storePassword = System.getenv("JARVIS_STORE_PASSWORD")
+                keyAlias = System.getenv("JARVIS_KEY_ALIAS")
+                keyPassword = System.getenv("JARVIS_KEY_PASSWORD")
+                storeType = "PKCS12"
+            }
         }
     }
 
     buildTypes {
-        debug {
-            signingConfig = signingConfigs.getByName("sideload")
-        }
         release {
             isMinifyEnabled = false
             isDebuggable = false
-            signingConfig = signingConfigs.getByName("sideload")
+            signingConfig = signingConfigs.findByName("releaseKey")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

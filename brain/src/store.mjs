@@ -51,7 +51,7 @@ function defaultLocalState() {
   return {
     settings: {
       id: "default",
-      pairing_token: "jarvis-d4d0cd67",
+      pairing_token: "",
       confirm_sensitive_actions: true,
       timezone: "Asia/Kolkata",
       llm_config: {
@@ -102,23 +102,19 @@ export class LocalJsonStore {
       this._write(initial);
       return initial;
     }
-    try {
-      const raw = fs.readFileSync(this.filePath, "utf8");
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed.devices) || parsed.devices.length === 0) {
-        parsed.devices = [defaultSimulatorDevice()];
-      }
-      return parsed;
-    } catch {
-      const initial = defaultLocalState();
-      this._write(initial);
-      return initial;
-    }
+    const parsed = JSON.parse(fs.readFileSync(this.filePath, "utf8"));
+    if (!Array.isArray(parsed.devices)) throw new Error("Invalid local database: devices missing");
+    if (!parsed.devices.length) parsed.devices = [defaultSimulatorDevice()];
+    return parsed;
   }
 
   _write(data) {
     fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-    fs.writeFileSync(this.filePath, JSON.stringify(data, null, 2));
+    const temp = `${this.filePath}.${crypto.randomUUID()}.tmp`;
+    try {
+      fs.writeFileSync(temp, JSON.stringify(data, null, 2), { mode: 0o600 });
+      fs.renameSync(temp, this.filePath);
+    } finally { fs.rmSync(temp, { force: true }); }
   }
 
   async getSettings() {
@@ -187,10 +183,10 @@ export class LocalJsonStore {
     return row;
   }
 
-  async updateCommand(id, patch) {
+  async updateCommand(id, patch, expected) {
     const db = this._read();
     const idx = db.commands.findIndex((c) => c.id === id);
-    if (idx < 0) return null;
+    if (idx < 0 || (expected && db.commands[idx].status !== expected)) return null;
     db.commands[idx] = {
       ...db.commands[idx],
       ...patch,
@@ -223,10 +219,10 @@ export class LocalJsonStore {
     return row;
   }
 
-  async updateTask(id, patch) {
+  async updateTask(id, patch, count) {
     const db = this._read();
     const idx = db.scheduled_tasks.findIndex((t) => t.id === id);
-    if (idx < 0) return null;
+    if (idx < 0 || (count !== undefined && (!db.scheduled_tasks[idx].enabled || db.scheduled_tasks[idx].run_count !== count))) return null;
     db.scheduled_tasks[idx] = { ...db.scheduled_tasks[idx], ...patch };
     this._write(db);
     return db.scheduled_tasks[idx];
@@ -373,7 +369,7 @@ export class SupabaseRestStore {
     if (rows && rows.length > 0) return rows[0];
     const seeded = {
       id: "default",
-      pairing_token: "jarvis-d4d0cd67",
+      pairing_token: "",
       confirm_sensitive_actions: true,
       timezone: "Asia/Kolkata",
       llm_config: {
@@ -467,10 +463,10 @@ export class SupabaseRestStore {
     return rows?.[0] || cmd;
   }
 
-  async updateCommand(id, patch) {
+  async updateCommand(id, patch, expected) {
     const rows = await this._rest("jarvis_commands", {
       method: "PATCH",
-      query: `id=eq.${encodeURIComponent(id)}`,
+      query: `id=eq.${encodeURIComponent(id)}${expected ? `&status=eq.${expected}` : ""}`,
       body: { ...patch, updated_at: new Date().toISOString() }
     });
     return rows?.[0] || null;
@@ -499,10 +495,10 @@ export class SupabaseRestStore {
     return rows?.[0] || task;
   }
 
-  async updateTask(id, patch) {
+  async updateTask(id, patch, count) {
     const rows = await this._rest("jarvis_scheduled_tasks", {
       method: "PATCH",
-      query: `id=eq.${encodeURIComponent(id)}`,
+      query: `id=eq.${encodeURIComponent(id)}${count !== undefined ? `&enabled=eq.true&run_count=eq.${count}` : ""}`,
       body: patch
     });
     return rows?.[0] || null;
