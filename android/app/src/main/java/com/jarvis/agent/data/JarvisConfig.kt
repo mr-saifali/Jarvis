@@ -24,7 +24,7 @@ class JarvisConfig(context: Context) {
     private val prefs = context.getSharedPreferences("jarvis_agent_prefs", Context.MODE_PRIVATE)
 
     var brainUrl: String
-        get() = prefs.getString("brain_url", "https://jarvis-brain.vercel.app") ?: "https://jarvis-brain.vercel.app"
+        get() = prefs.getString("brain_url", "https://jarvis-brain-nu.vercel.app") ?: "https://jarvis-brain-nu.vercel.app"
         set(value) = prefs.edit().putString("brain_url", value.trim().trimEnd('/')).apply()
 
     var pairingToken: String
