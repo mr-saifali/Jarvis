@@ -112,7 +112,11 @@ function renderDeviceUI() {
 
     const tel = active.telemetry || {};
     $("#strip-name").textContent = active.name || "Android";
-    $("#strip-battery").textContent = typeof tel.battery === "number" ? `${tel.battery}%` : "--%";
+    $("#strip-battery").textContent =
+      typeof tel.battery === "number"
+        ? `${tel.battery}%${tel.charging ? " ⚡" : ""}`
+        : "--%";
+    $("#strip-volume").textContent = typeof tel.volume === "number" ? `${tel.volume}%` : "--%";
     $("#strip-brightness").textContent =
       typeof tel.brightness === "number" ? `${tel.brightness}%` : "--%";
     $("#strip-dnd").textContent = tel.dnd ? "On" : "Off";
@@ -121,6 +125,10 @@ function renderDeviceUI() {
     if (typeof tel.brightness === "number") {
       $("#quick-brightness").value = tel.brightness;
       $("#quick-bright-val").textContent = `${tel.brightness}%`;
+    }
+    if (typeof tel.volume === "number") {
+      $("#quick-volume").value = tel.volume;
+      $("#quick-vol-val").textContent = `${tel.volume}%`;
     }
   }
 }
@@ -444,21 +452,35 @@ function setupListeners() {
     sendCommand(`Set brightness to ${e.target.value}%`);
   });
 
-  // Quick message / SMS / notification
+  // Quick volume slider
+  $("#quick-volume").addEventListener("input", (e) => {
+    $("#quick-vol-val").textContent = `${e.target.value}%`;
+  });
+  $("#quick-volume").addEventListener("change", (e) => {
+    sendCommand(`Set volume to ${e.target.value}%`);
+  });
+
+  // Quick message / SMS / call / speak / notification
   $("#quick-msg-form").addEventListener("submit", (e) => {
     e.preventDefault();
     const kind = $("#quick-msg-type").value;
     const to = $("#quick-msg-to").value.trim();
     const msg = $("#quick-msg-text").value.trim();
-    if (!msg) return;
     let prompt = "";
-    if (kind === "notify") {
+    if (kind === "call") {
+      if (!to) return showToast("Enter phone number or contact name");
+      prompt = `Call ${to}`;
+    } else if (kind === "speak") {
+      if (!msg) return showToast("Enter text for Jarvis to speak");
+      prompt = `Say ${msg}`;
+    } else if (kind === "notify") {
+      if (!msg) return showToast("Enter notification message");
       prompt = `Notify me ${msg}`;
     } else if (kind === "sms") {
-      if (!to) return showToast("Enter recipient name or phone number");
+      if (!to || !msg) return showToast("Enter recipient and message");
       prompt = `Send SMS to ${to} saying ${msg}`;
     } else {
-      if (!to) return showToast("Enter recipient name");
+      if (!to || !msg) return showToast("Enter recipient and message");
       prompt = `Open WhatsApp and message ${to} that ${msg}`;
     }
     $("#quick-msg-text").value = "";
@@ -470,6 +492,21 @@ function setupListeners() {
     e.preventDefault();
     const val = $("#quick-alarm-time").value || "06:30";
     sendCommand(`Set an alarm for ${val}`);
+  });
+
+  // Quick Maps / YouTube launch
+  $("#quick-nav-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const q = $("#quick-nav-query").value.trim();
+    if (!q) return showToast("Enter a place to navigate to");
+    $("#quick-nav-query").value = "";
+    sendCommand(`Navigate to ${q}`);
+  });
+  $("#btn-quick-yt").addEventListener("click", () => {
+    const q = $("#quick-nav-query").value.trim();
+    if (!q) return showToast("Enter a YouTube search query");
+    $("#quick-nav-query").value = "";
+    sendCommand(`Play ${q} on YouTube`);
   });
 
   // Schedule builder form

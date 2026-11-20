@@ -68,6 +68,17 @@ test("Planner parses WhatsApp message, cron, delay, and event rule", () => {
   assert.equal(rulePlan.rule.event_type, "notification");
   assert.equal(rulePlan.rule.condition.app, "WhatsApp");
   assert.equal(rulePlan.rule.condition.sender, "Mom");
+
+  assert.equal(planDeterministic("Turn on flashlight").actions[0].type, "set_flashlight");
+  assert.equal(planDeterministic("Set volume to 75%").actions[0].type, "set_volume");
+  assert.equal(planDeterministic("Next song").actions[0].type, "media_control");
+  assert.equal(planDeterministic("Say Good morning sir").actions[0].type, "speak_tts");
+  assert.equal(planDeterministic("Ring my phone").actions[0].type, "ring_phone");
+  assert.equal(planDeterministic("Take a screenshot").actions[0].type, "take_screenshot");
+  assert.equal(planDeterministic("Set a timer for 5 minutes").actions[0].type, "set_timer");
+  assert.equal(planDeterministic("Navigate to Patna Junction").actions[0].type, "navigate_maps");
+  assert.equal(planDeterministic("Play Believer on YouTube").actions[0].type, "play_youtube");
+  assert.equal(planDeterministic("Copy hello123 to clipboard").actions[0].type, "copy_clipboard");
 });
 
 test("Scheduler evaluates cron expressions and event rules accurately", () => {

@@ -160,6 +160,10 @@
             <strong id="strip-battery">--%</strong>
           </div>
           <div class="stat-box">
+            <span class="stat-label">Volume</span>
+            <strong id="strip-volume">--%</strong>
+          </div>
+          <div class="stat-box">
             <span class="stat-label">Brightness</span>
             <strong id="strip-brightness">--%</strong>
           </div>
@@ -187,19 +191,20 @@
             <input
               type="text"
               id="command-input"
-              placeholder="Ask Jarvis... e.g. Turn on DND, Message Mom on WhatsApp, Set alarm for 6:30 AM"
+              placeholder="Ask Jarvis... e.g. Turn on flashlight, Say Good morning, Navigate to Airport, Message Mom"
               autocomplete="off"
             />
             <button type="submit" class="btn btn-primary">Run</button>
           </form>
 
           <div class="quick-pills">
-            <button class="pill-btn" data-cmd="Turn on Do Not Disturb">Turn on DND</button>
-            <button class="pill-btn" data-cmd="Turn off Do Not Disturb">Turn off DND</button>
-            <button class="pill-btn" data-cmd="Set brightness to 35%">Brightness 35%</button>
+            <button class="pill-btn" data-cmd="Turn on flashlight">Flashlight On</button>
+            <button class="pill-btn" data-cmd="Turn off flashlight">Flashlight Off</button>
+            <button class="pill-btn" data-cmd="Ring my phone">Find / Ring Phone</button>
+            <button class="pill-btn" data-cmd="Take a screenshot">Screenshot</button>
+            <button class="pill-btn" data-cmd="Turn on Do Not Disturb">DND On</button>
             <button class="pill-btn" data-cmd="Set an alarm for 6:30 AM">Alarm 6:30 AM</button>
-            <button class="pill-btn" data-cmd="Open WhatsApp and message Mom that I am on my way">Message Mom</button>
-            <button class="pill-btn" data-cmd="Notify me Check your schedule">Ping Phone</button>
+            <button class="pill-btn" data-cmd="Say At your service sir, all systems online">Jarvis Speak</button>
           </div>
         </div>
 
@@ -210,26 +215,30 @@
             <div class="block-title">Open App on Phone</div>
             <div class="app-chips">
               <button type="button" class="pill-btn" data-quick-cmd="Open WhatsApp">WhatsApp</button>
-              <button type="button" class="pill-btn" data-quick-cmd="Open Gmail">Gmail</button>
+              <button type="button" class="pill-btn" data-quick-cmd="Open YouTube">YouTube</button>
               <button type="button" class="pill-btn" data-quick-cmd="Open Spotify">Spotify</button>
-              <button type="button" class="pill-btn" data-quick-cmd="Open Notion">Notion</button>
-              <button type="button" class="pill-btn" data-quick-cmd="Open Clock">Clock</button>
+              <button type="button" class="pill-btn" data-quick-cmd="Open Gmail">Gmail</button>
+              <button type="button" class="pill-btn" data-quick-cmd="Open Maps">Maps</button>
               <button type="button" class="pill-btn" data-quick-cmd="Open Settings">Settings</button>
             </div>
             <form id="quick-open-form" class="inline-form">
-              <input type="text" id="quick-app-name" placeholder="Any app name (e.g. YouTube)" />
+              <input type="text" id="quick-app-name" placeholder="Any app name (e.g. Instagram)" />
               <button type="submit" class="btn btn-outline btn-sm">Open</button>
             </form>
           </div>
 
-          <!-- Sound, Brightness & Screen -->
+          <!-- Hardware, Audio & Screen -->
           <div class="block-card">
-            <div class="block-title">Sound, Display &amp; Screen</div>
+            <div class="block-title">Hardware, Audio &amp; Screen</div>
             <div class="btn-row">
+              <button type="button" class="btn btn-outline btn-sm" data-quick-cmd="Turn on flashlight">Torch On</button>
+              <button type="button" class="btn btn-outline btn-sm" data-quick-cmd="Turn off flashlight">Torch Off</button>
               <button type="button" class="btn btn-outline btn-sm" data-quick-cmd="Turn on Do Not Disturb">DND On</button>
               <button type="button" class="btn btn-outline btn-sm" data-quick-cmd="Turn off Do Not Disturb">DND Off</button>
-              <button type="button" class="btn btn-outline btn-sm" data-quick-cmd="Lock the screen">Lock Screen</button>
+              <button type="button" class="btn btn-outline btn-sm" data-quick-cmd="Take a screenshot">Screenshot</button>
+              <button type="button" class="btn btn-outline btn-sm" data-quick-cmd="Lock the screen">Lock</button>
               <button type="button" class="btn btn-outline btn-sm" data-quick-cmd="Go home">Home</button>
+              <button type="button" class="btn btn-outline btn-sm" data-quick-cmd="Ring my phone">Ring Phone</button>
             </div>
             <div class="slider-group">
               <div class="slider-header">
@@ -238,35 +247,57 @@
               </div>
               <input type="range" id="quick-brightness" min="10" max="100" value="65" />
             </div>
+            <div class="slider-group" style="margin-top:8px;">
+              <div class="slider-header">
+                <span>Media Volume</span>
+                <strong id="quick-vol-val">60%</strong>
+              </div>
+              <input type="range" id="quick-volume" min="0" max="100" value="60" />
+            </div>
+            <div class="btn-row" style="margin-top:10px;margin-bottom:0;">
+              <button type="button" class="btn btn-outline btn-xs" data-quick-cmd="Previous song">Prev</button>
+              <button type="button" class="btn btn-outline btn-xs" data-quick-cmd="Play music">Play</button>
+              <button type="button" class="btn btn-outline btn-xs" data-quick-cmd="Pause music">Pause</button>
+              <button type="button" class="btn btn-outline btn-xs" data-quick-cmd="Next song">Next</button>
+              <button type="button" class="btn btn-outline btn-xs" data-quick-cmd="Mute">Mute</button>
+              <button type="button" class="btn btn-outline btn-xs" data-quick-cmd="Unmute">Unmute</button>
+            </div>
           </div>
 
-          <!-- Send Message or Notification -->
+          <!-- Send Message, Speak or Call -->
           <div class="block-card">
-            <div class="block-title">Send Message or Notification</div>
+            <div class="block-title">Message, Call or Speak Aloud</div>
             <form id="quick-msg-form" class="stack-form">
               <div class="inline-row">
                 <select id="quick-msg-type" class="select-input">
                   <option value="whatsapp">WhatsApp</option>
                   <option value="sms">SMS</option>
+                  <option value="call">Phone Call</option>
+                  <option value="speak">Speak Aloud (TTS)</option>
                   <option value="notify">Phone Alert</option>
                 </select>
-                <input type="text" id="quick-msg-to" placeholder="To (e.g. Mom)" />
+                <input type="text" id="quick-msg-to" placeholder="To (name or number)" />
               </div>
               <div class="inline-form">
-                <input type="text" id="quick-msg-text" placeholder="Message text..." />
+                <input type="text" id="quick-msg-text" placeholder="Message or words to speak..." />
                 <button type="submit" class="btn btn-primary btn-sm">Send</button>
               </div>
             </form>
           </div>
 
-          <!-- Set Alarm -->
+          <!-- Alarm, Timer & Quick Launch -->
           <div class="block-card">
-            <div class="block-title">Set Alarm</div>
-            <form id="quick-alarm-form" class="inline-form">
+            <div class="block-title">Alarm, Timer &amp; Navigation</div>
+            <form id="quick-alarm-form" class="inline-form" style="margin-top:0;">
               <input type="time" id="quick-alarm-time" value="06:30" />
               <button type="submit" class="btn btn-outline btn-sm">Set Alarm</button>
+              <button type="button" class="btn btn-outline btn-sm" data-quick-cmd="Set a timer for 5 minutes">5m Timer</button>
             </form>
-            <p class="helper-text">Triggers the native Android Clock alarm directly on your paired device.</p>
+            <form id="quick-nav-form" class="inline-form">
+              <input type="text" id="quick-nav-query" placeholder="Navigate place or YouTube search..." />
+              <button type="submit" class="btn btn-outline btn-sm" data-nav="maps">Maps</button>
+              <button type="button" class="btn btn-outline btn-sm" id="btn-quick-yt">YouTube</button>
+            </form>
           </div>
         </div>
 

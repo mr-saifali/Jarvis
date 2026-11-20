@@ -7,6 +7,9 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.media.AudioManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
@@ -46,11 +49,12 @@ class JarvisForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        JarvisVoiceEngine.init(applicationContext)
         createNotificationChannel()
         val notif = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("Jarvis Agent Active")
-            .setContentText("Connected to Jarvis Brain & listening for commands")
+            .setContentTitle("J.A.R.V.I.S. Active")
+            .setContentText("Connected to Cloud Brain & listening for commands")
             .setOngoing(true)
             .build()
         startForeground(NOTIF_ID, notif)
@@ -69,21 +73,23 @@ class JarvisForegroundService : Service() {
         val executor = DeviceActionExecutor(applicationContext)
 
         pollJob = scope.launch {
-            JarvisLogStore.append("Foreground bridge started -> ${config.brainUrl}")
+            JarvisLogStore.append("Foreground bridge online -> ${config.brainUrl}")
             while (isActive) {
+                var sleepMs = 3_000L
                 try {
                     val telemetry = collectTelemetry()
                     val caps = collectCapabilities()
                     val commands = client.sendHeartbeat(telemetry, caps)
                     for (cmd in commands) {
-                        JarvisLogStore.append("Executing command: ${cmd.prompt}")
-                        val (status, resultActions) = executor.executeActions(cmd.actions)
-                        client.ackCommand(cmd.id, status, "Handled on Android device", resultActions)
+                        JarvisLogStore.append("Executing: ${cmd.prompt}")
+                        val (status, resultActions) = executor.executeActions(cmd.actions, config.voiceFeedback)
+                        client.ackCommand(cmd.id, status, "Executed on Android device", resultActions)
                     }
                 } catch (e: Exception) {
                     JarvisLogStore.append("Heartbeat error: ${e.message}")
+                    sleepMs = 8_000L
                 }
-                delay(8_000)
+                delay(sleepMs)
             }
         }
     }
@@ -92,6 +98,8 @@ class JarvisForegroundService : Service() {
         val batIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val level = batIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: 80
         val scale = batIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+        val status = batIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
         val batteryPct = if (scale > 0) (level * 100) / scale else 80
 
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -104,11 +112,30 @@ class JarvisForegroundService : Service() {
             160
         }
 
+        val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        val curVol = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val volumePct = ((curVol * 100.0) / maxVol).toInt().coerceIn(0, 100)
+
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+        val networkLabel = when {
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true -> "Wi-Fi"
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true -> "Mobile Data"
+            else -> "Offline"
+        }
+
         return JSONObject().apply {
             put("battery", batteryPct)
+            put("charging", charging)
             put("dnd", dnd)
             put("locked", km.isKeyguardLocked)
             put("brightness", ((brightnessRaw / 255.0) * 100).toInt().coerceIn(5, 100))
+            put("volume", volumePct)
+            put("wifi", networkLabel)
+            if (JarvisAccessibilityService.lastForegroundPackage.isNotBlank()) {
+                put("activeApp", JarvisAccessibilityService.lastForegroundPackage.substringAfterLast('.'))
+            }
         }
     }
 
@@ -118,6 +145,8 @@ class JarvisForegroundService : Service() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         put("dnd", nm.isNotificationPolicyAccessGranted)
         put("brightness", Settings.System.canWrite(applicationContext))
+        put("tts", true)
+        put("flashlight", true)
     }
 
     private fun createNotificationChannel() {
