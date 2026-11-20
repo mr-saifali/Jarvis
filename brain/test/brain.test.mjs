@@ -310,3 +310,16 @@ test("Malformed local database is preserved", async t => {
   await assert.rejects(new LocalJsonStore(file).getSettings());
   assert.equal(fs.readFileSync(file, "utf8"), "truncated");
 });
+
+test("device auth handles a JSON-string-wrapped map and rejects malformed maps", async t => {
+  const original = process.env.JARVIS_DEVICE_TOKENS;
+  t.after(() => { process.env.JARVIS_DEVICE_TOKENS = original; });
+  const handler = createApiHandler(() => ({}));
+  const probe = () => invokeHandler(handler, {method:"GET", url:"/api/commands/poll", headers:{"x-jarvis-token":"test-device"}});
+  process.env.JARVIS_DEVICE_TOKENS = JSON.stringify(original);
+  assert.equal((await probe()).status, 400); // authenticated; missing deviceId
+  for (const bad of ['null', '["test-device"]', 'invalid']) {
+    process.env.JARVIS_DEVICE_TOKENS = bad;
+    assert.equal((await probe()).status, 401);
+  }
+});
