@@ -406,7 +406,7 @@ export function createApiHandler(storeFactory = () => createStoreFromEnv(process
 
       return sendJson(res, 404, { ok: false, error: `Not found: ${method} ${pathname}` });
     } catch (err) {
-      return sendJson(res, 500, {
+      return sendJson(res, err.status === 400 ? 400 : 500, {
         ok: false,
         error: err?.message || "Internal server error"
       });

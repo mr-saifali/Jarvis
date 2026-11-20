@@ -1,6 +1,7 @@
 /**
  * J.A.R.V.I.S. Execution Engine (Simulator + Cloud Vault + Scheduler + Event Rules)
  */
+import { assistantPlan, dailyBriefing } from "./assistant.mjs";
 import { makeId } from "./store.mjs";
 import { planCommand, planHasSensitiveActions } from "./planner.mjs";
 import { getZonedParts, isTaskDue, matchesRuleCondition } from "./scheduler.mjs";
@@ -192,9 +193,17 @@ export async function executeActionsForDevice(store, device, actions) {
 
 export async function dispatchCommand(store, { prompt, deviceId = "auto", source = "user", skipApproval = false }) {
   const settings = await store.getSettings();
-  const plan = await planCommand(prompt, settings.llm_config);
-
-  if (source === "device" && (plan.kind !== "command" || !(await store.getDevice(deviceId)))) throw new Error("Device must be registered and issue immediate commands only");
+  if (source === "device" && !(await store.getDevice(deviceId))) throw new Error("Register device first");
+  const builtin = await assistantPlan(store, settings, prompt, source);
+  const plan = builtin || await planCommand(prompt, settings.llm_config);
+  if (plan.kind === "routine") return plan;
+  if (builtin?.kind === "briefing") {
+    const device = await resolveTargetDevice(store, deviceId);
+    return {kind:"briefing", summary:await dailyBriefing(store,device,settings.timezone)};
+  }
+  const reminder = builtin?.kind === "schedule" && builtin.actions.every(a=>a.type === "reminder");
+  if (source === "device" && plan.kind !== "command" && !reminder) throw new Error("Only own-device reminders may be scheduled from a phone");
+  if (reminder && deviceId === "auto") deviceId = (await resolveTargetDevice(store, deviceId)).id;
 
   if (plan.kind === "schedule" && plan.schedule) {
     const task = await store.createTask({

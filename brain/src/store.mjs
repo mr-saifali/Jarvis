@@ -274,8 +274,9 @@ export class LocalJsonStore {
     return true;
   }
 
-  async listNotifications(limit = 30) {
+  async listNotifications(limit = 30, unreadDevice) {
     return [...this._read().notifications]
+      .filter(n => !unreadDevice || (!n.read && n.device_id === unreadDevice))
       .sort((a, b) => new Date(b.received_at) - new Date(a.received_at))
       .slice(0, limit);
   }
@@ -552,10 +553,10 @@ export class SupabaseRestStore {
     return true;
   }
 
-  async listNotifications(limit = 30) {
+  async listNotifications(limit = 30, unreadDevice) {
     return (
       (await this._rest("jarvis_notifications", {
-        query: `order=received_at.desc&limit=${limit}`
+        query: `order=received_at.desc&limit=${limit}${unreadDevice ? `&read=eq.false&device_id=eq.${encodeURIComponent(unreadDevice)}` : ""}`
       })) || []
     );
   }

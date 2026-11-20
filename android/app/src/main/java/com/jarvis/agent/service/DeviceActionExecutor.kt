@@ -129,6 +129,7 @@ class DeviceActionExecutor(private val context: Context) {
                 "open_notifications" -> JarvisAccessibilityService.instance?.openNotificationsShade() ?: false
                 "send_sms" -> sendSms(action.optString("recipient", ""), action.optString("message", ""))
                 "make_call" -> makeCall(action.optString("recipient", ""))
+                "reminder" -> com.jarvis.agent.worker.showReminder(context, action.optString("message", "Reminder"))
                 "notify" -> showNotification(action.optString("title", "J.A.R.V.I.S."), action.optString("message", ""))
                 "lock_screen" -> JarvisAccessibilityService.instance?.lockScreen() ?: false
                 "navigate_home" -> JarvisAccessibilityService.instance?.goHome() ?: false

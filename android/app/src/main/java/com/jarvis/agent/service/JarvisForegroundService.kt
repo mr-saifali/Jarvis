@@ -1,5 +1,8 @@
 package com.jarvis.agent.service
 
+import android.app.Notification
+import android.app.PendingIntent
+import androidx.core.app.RemoteInput
 import android.app.KeyguardManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -35,6 +38,8 @@ class JarvisForegroundService : Service() {
 
     companion object {
         private const val CHANNEL_ID = "jarvis_daemon_channel"
+        private const val ASK = "com.jarvis.agent.ASK"
+        private const val INPUT = "prompt"
         private const val NOTIF_ID = 101
 
         fun start(context: Context) {
@@ -51,16 +56,49 @@ class JarvisForegroundService : Service() {
         super.onCreate()
         JarvisVoiceEngine.init(applicationContext)
         createNotificationChannel()
-        val notif = NotificationCompat.Builder(this, CHANNEL_ID)
+        startForeground(NOTIF_ID, commandNotification("Expand and tap Ask Jarvis to give a command"))
+    }
+
+    private fun commandNotification(message: String): Notification {
+        // Inline replies need a mutable PendingIntent; bind it to this non-exported service.
+        val intent = Intent(this, JarvisForegroundService::class.java).setAction(ASK)
+        val mutable = if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0
+        val pending = PendingIntent.getService(this, 1, intent, PendingIntent.FLAG_UPDATE_CURRENT or mutable)
+        val action = NotificationCompat.Action.Builder(android.R.drawable.ic_btn_speak_now, "Ask Jarvis", pending)
+            .addRemoteInput(RemoteInput.Builder(INPUT).setLabel("Type a command").build())
+            .setAuthenticationRequired(true).build()
+        return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("J.A.R.V.I.S. Active")
-            .setContentText("Connected to Cloud Brain & listening for commands")
-            .setOngoing(true)
-            .build()
-        startForeground(NOTIF_ID, notif)
+            .setContentTitle("J.A.R.V.I.S. command bar")
+            .setContentText(message).setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET).setOnlyAlertOnce(true)
+            .setOngoing(true).addAction(action).build()
+    }
+
+    private fun status(message: String) {
+        getSystemService(NotificationManager::class.java).notify(NOTIF_ID, commandNotification(message))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ASK) {
+            val input = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(INPUT)?.toString()?.trim().orEmpty()
+            val locked = getSystemService(KeyguardManager::class.java).isKeyguardLocked
+            when {
+                locked -> status("Unlock your phone, then submit again.")
+                input.length !in 1..1000 -> status("Enter a command between 1 and 1000 characters.")
+                else -> scope.launch {
+                    try {
+                        val result = JarvisApiClient(JarvisConfig(applicationContext)).sendCommand(input)
+                        val cmd = result.optJSONObject("command")
+                        status(when (cmd?.optString("status")) {
+                            "awaiting_approval" -> "Waiting for approval in the dashboard."
+                            "queued" -> "Queued for this phone. Check the command log for completion."
+                            else -> result.optString("summary", "Command submitted.").take(500)
+                        })
+                    } catch (_: Exception) { status("Could not confirm submission. Check connection and command history before retrying.") }
+                }
+            }
+        }
         if (pollJob?.isActive != true) {
             startPolling()
         }
