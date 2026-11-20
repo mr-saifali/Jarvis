@@ -3,53 +3,181 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>J.A.R.V.I.S. — Android AI Agent & Automation Hub</title>
+  <title>Jarvis — Control Your Android Phone</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <div class="app-shell">
-    <!-- Top Bar -->
-    <header class="topbar">
-      <div class="brand">
-        <div class="arc-reactor" aria-hidden="true">
-          <div class="arc-core"></div>
-        </div>
-        <div>
-          <h1>J.A.R.V.I.S. <span class="badge-beta">ANDROID CORE</span></h1>
-          <p class="subtitle">Voice Command &bull; Accessibility UI Agent &bull; Background Scheduler</p>
-        </div>
+  <div class="workspace">
+    <!-- Mobile Top Bar -->
+    <header class="mobile-bar">
+      <button class="icon-btn" id="btn-mobile-menu" aria-label="Open menu">&#9776;</button>
+      <div class="mobile-title">
+        <span class="brand-mark">J</span>
+        <strong>Jarvis</strong>
       </div>
-
-      <div class="topbar-controls">
-        <div class="status-pill" id="connection-pill">
-          <span class="dot online"></span>
-          <span id="connection-label">Brain Online</span>
-        </div>
-
-        <label class="toggle-chip" title="Require manual confirmation before SMS, phone calls, or sending messages">
-          <input type="checkbox" id="safety-toggle" checked />
-          <span>Confirm Sensitive Actions</span>
-        </label>
-
-        <button class="btn btn-outline" id="btn-open-connect">Connect Real Phone</button>
-        <button class="btn btn-outline" id="btn-open-settings">Brain Settings</button>
-      </div>
+      <a
+        class="btn btn-primary btn-xs apk-download-link"
+        href="https://github.com/mr-saifali/Jarvis/releases/download/latest/jarvis-agent.apk"
+        download="jarvis-agent.apk"
+      >
+        Download APK
+      </a>
     </header>
 
-    <!-- Main 2-column Workspace -->
-    <main class="main-grid">
-      <!-- Left: Command Center + Tabs -->
-      <section class="left-panel">
-        <!-- Command Bar -->
-        <div class="card command-card">
-          <div class="card-header">
-            <h2>Command Jarvis</h2>
-            <span class="meta-text" id="target-device-label">Target: Android Phone Simulator</span>
+    <!-- Sidebar (Notion-style) -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-top">
+        <div class="workspace-brand">
+          <span class="brand-mark">J</span>
+          <div>
+            <div class="brand-name">Jarvis</div>
+            <div class="brand-status" id="sidebar-status">
+              <span class="dot" id="status-dot"></span>
+              <span id="connection-label">Connecting...</span>
+            </div>
           </div>
+        </div>
+        <button class="icon-btn close-mobile-only" id="btn-close-menu" aria-label="Close menu">&times;</button>
+      </div>
 
-          <form id="command-form" class="command-form">
-            <button type="button" id="btn-mic" class="mic-btn" title="Speak command (Browser Speech API)">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <!-- Direct APK Download Callout -->
+      <div class="sidebar-apk-box">
+        <a
+          class="btn btn-primary btn-full apk-download-link"
+          href="https://github.com/mr-saifali/Jarvis/releases/download/latest/jarvis-agent.apk"
+          download="jarvis-agent.apk"
+        >
+          &#11015; Download Android APK
+        </a>
+        <div class="apk-sub-links">
+          <a href="https://github.com/mr-saifali/Jarvis/releases" target="_blank" rel="noopener">All Releases</a>
+          <span>&bull;</span>
+          <a href="https://github.com/mr-saifali/Jarvis/actions" target="_blank" rel="noopener">CI Builds</a>
+        </div>
+      </div>
+
+      <!-- Navigation -->
+      <nav class="nav-list" aria-label="Workspace pages">
+        <button class="nav-item active" data-page="control">
+          <span class="nav-icon">&#128241;</span>
+          <span>Control Phone</span>
+        </button>
+        <button class="nav-item" data-page="schedules">
+          <span class="nav-icon">&#9200;</span>
+          <span>Schedules</span>
+          <span class="nav-count" id="count-tasks">0</span>
+        </button>
+        <button class="nav-item" data-page="rules">
+          <span class="nav-icon">&#9889;</span>
+          <span>Automations</span>
+          <span class="nav-count" id="count-rules">0</span>
+        </button>
+        <button class="nav-item" data-page="vault">
+          <span class="nav-icon">&#128221;</span>
+          <span>Notes &amp; Vault</span>
+          <span class="nav-count" id="count-vault">0</span>
+        </button>
+        <button class="nav-item" data-page="connect">
+          <span class="nav-icon">&#128279;</span>
+          <span>Connect Phone</span>
+        </button>
+        <button class="nav-item" data-page="settings">
+          <span class="nav-icon">&#9881;&#65039;</span>
+          <span>Settings &amp; Logs</span>
+        </button>
+      </nav>
+
+      <!-- Bottom Device & Theme Controls -->
+      <div class="sidebar-footer">
+        <label class="sidebar-label" for="device-selector">Target Phone</label>
+        <select id="device-selector" class="select-input"></select>
+
+        <div class="sidebar-footer-row">
+          <label class="mini-switch">
+            <input type="checkbox" id="safety-toggle" checked />
+            <span>Confirm SMS/Calls</span>
+          </label>
+          <button type="button" class="btn btn-ghost btn-xs" id="btn-theme-toggle" title="Toggle Light/Dark">
+            Dark
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Sidebar Backdrop for mobile -->
+    <div class="sidebar-backdrop hidden" id="sidebar-backdrop"></div>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Feedback Toast -->
+      <div class="toast hidden" id="toast"></div>
+
+      <!-- PAGE 1: CONTROL PHONE -->
+      <section class="page active" id="page-control">
+        <div class="page-header">
+          <div>
+            <h1>Control Phone</h1>
+            <p class="page-desc" id="active-device-summary">Checking connected devices...</p>
+          </div>
+          <div class="header-actions">
+            <span class="pill" id="device-online-pill">Checking...</span>
+          </div>
+        </div>
+
+        <!-- Setup Callout (shown prominently when only simulator is connected) -->
+        <div class="callout-card" id="setup-callout">
+          <div class="callout-body">
+            <div class="callout-title">Pair your real Android phone in 1 minute</div>
+            <p class="callout-text">
+              Download and install the Jarvis APK on your Android phone, tap <strong>Save &amp; Connect</strong> (your Brain URL and Pairing Token are pre-filled), and grant Accessibility + Notification access.
+            </p>
+            <div class="callout-meta">
+              <span><strong>Brain URL:</strong> <code id="inline-origin">https://jarvis-brain-nu.vercel.app</code></span>
+              <span><strong>Token:</strong> <code id="inline-token">jarvis-d4d0cd67</code></span>
+              <button type="button" class="btn btn-ghost btn-xs" id="btn-copy-inline-token">Copy Token</button>
+            </div>
+          </div>
+          <div class="callout-actions">
+            <a
+              class="btn btn-primary apk-download-link"
+              href="https://github.com/mr-saifali/Jarvis/releases/download/latest/jarvis-agent.apk"
+              download="jarvis-agent.apk"
+            >
+              &#11015; Download APK
+            </a>
+            <button type="button" class="btn btn-outline" data-goto="connect">Setup Guide</button>
+          </div>
+        </div>
+
+        <!-- Connected Real Phone Telemetry Strip -->
+        <div class="status-strip hidden" id="real-phone-strip">
+          <div class="stat-box">
+            <span class="stat-label">Device</span>
+            <strong id="strip-name">Android</strong>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Battery</span>
+            <strong id="strip-battery">--%</strong>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Brightness</span>
+            <strong id="strip-brightness">--%</strong>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Do Not Disturb</span>
+            <strong id="strip-dnd">Off</strong>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Screen</span>
+            <strong id="strip-lock">Unlocked</strong>
+          </div>
+        </div>
+
+        <!-- Ask Jarvis Command Bar -->
+        <div class="block-card">
+          <form id="command-form" class="command-bar">
+            <button type="button" id="btn-mic" class="mic-btn" title="Speak command">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
                 <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
                 <line x1="12" y1="19" x2="12" y2="23"/>
@@ -59,214 +187,295 @@
             <input
               type="text"
               id="command-input"
-              placeholder='Try: "Open WhatsApp and message Mom that I am on my way" or "In 30 seconds set brightness to 25%"'
+              placeholder="Ask Jarvis... e.g. Turn on DND, Message Mom on WhatsApp, Set alarm for 6:30 AM"
               autocomplete="off"
             />
-            <button type="submit" class="btn btn-primary">Execute</button>
+            <button type="submit" class="btn btn-primary">Run</button>
           </form>
 
-          <div class="preset-chips">
-            <button class="chip" data-cmd="Open WhatsApp and message Mom that I will be home in 15 minutes">WhatsApp Msg</button>
-            <button class="chip" data-cmd="Turn on Do Not Disturb and set brightness to 30%">Night Mode</button>
-            <button class="chip" data-cmd="Set an alarm for 6:30 AM">6:30 AM Alarm</button>
-            <button class="chip" data-cmd="In 20 seconds turn off Do Not Disturb and notify me Ready for focus">Schedule in 20s</button>
-            <button class="chip" data-cmd="Every weekday at 8:30 AM summarize unread notifications and save to Notion">Cron 8:30 AM</button>
-            <button class="chip" data-cmd="When I get a WhatsApp message from Mom, auto-reply In a meeting, will call soon">Event Rule</button>
+          <div class="quick-pills">
+            <button class="pill-btn" data-cmd="Turn on Do Not Disturb">Turn on DND</button>
+            <button class="pill-btn" data-cmd="Turn off Do Not Disturb">Turn off DND</button>
+            <button class="pill-btn" data-cmd="Set brightness to 35%">Brightness 35%</button>
+            <button class="pill-btn" data-cmd="Set an alarm for 6:30 AM">Alarm 6:30 AM</button>
+            <button class="pill-btn" data-cmd="Open WhatsApp and message Mom that I am on my way">Message Mom</button>
+            <button class="pill-btn" data-cmd="Notify me Check your schedule">Ping Phone</button>
           </div>
         </div>
 
-        <!-- Tabs -->
-        <div class="tabs-bar">
-          <button class="tab-btn active" data-tab="timeline">Execution Feed <span class="count" id="count-cmds">0</span></button>
-          <button class="tab-btn" data-tab="schedules">Background Schedules <span class="count" id="count-tasks">0</span></button>
-          <button class="tab-btn" data-tab="rules">Event Rules <span class="count" id="count-rules">0</span></button>
-          <button class="tab-btn" data-tab="vault">Cloud Vault (Notion/Drive) <span class="count" id="count-vault">0</span></button>
-          <button class="tab-btn" data-tab="logs">Live Telemetry</button>
+        <!-- Quick Remote Controls Grid (1-tap, no typing) -->
+        <div class="controls-grid">
+          <!-- Open App -->
+          <div class="block-card">
+            <div class="block-title">Open App on Phone</div>
+            <div class="app-chips">
+              <button type="button" class="pill-btn" data-quick-cmd="Open WhatsApp">WhatsApp</button>
+              <button type="button" class="pill-btn" data-quick-cmd="Open Gmail">Gmail</button>
+              <button type="button" class="pill-btn" data-quick-cmd="Open Spotify">Spotify</button>
+              <button type="button" class="pill-btn" data-quick-cmd="Open Notion">Notion</button>
+              <button type="button" class="pill-btn" data-quick-cmd="Open Clock">Clock</button>
+              <button type="button" class="pill-btn" data-quick-cmd="Open Settings">Settings</button>
+            </div>
+            <form id="quick-open-form" class="inline-form">
+              <input type="text" id="quick-app-name" placeholder="Any app name (e.g. YouTube)" />
+              <button type="submit" class="btn btn-outline btn-sm">Open</button>
+            </form>
+          </div>
+
+          <!-- Sound, Brightness & Screen -->
+          <div class="block-card">
+            <div class="block-title">Sound, Display &amp; Screen</div>
+            <div class="btn-row">
+              <button type="button" class="btn btn-outline btn-sm" data-quick-cmd="Turn on Do Not Disturb">DND On</button>
+              <button type="button" class="btn btn-outline btn-sm" data-quick-cmd="Turn off Do Not Disturb">DND Off</button>
+              <button type="button" class="btn btn-outline btn-sm" data-quick-cmd="Lock the screen">Lock Screen</button>
+              <button type="button" class="btn btn-outline btn-sm" data-quick-cmd="Go home">Home</button>
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <span>Brightness</span>
+                <strong id="quick-bright-val">65%</strong>
+              </div>
+              <input type="range" id="quick-brightness" min="10" max="100" value="65" />
+            </div>
+          </div>
+
+          <!-- Send Message or Notification -->
+          <div class="block-card">
+            <div class="block-title">Send Message or Notification</div>
+            <form id="quick-msg-form" class="stack-form">
+              <div class="inline-row">
+                <select id="quick-msg-type" class="select-input">
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="sms">SMS</option>
+                  <option value="notify">Phone Alert</option>
+                </select>
+                <input type="text" id="quick-msg-to" placeholder="To (e.g. Mom)" />
+              </div>
+              <div class="inline-form">
+                <input type="text" id="quick-msg-text" placeholder="Message text..." />
+                <button type="submit" class="btn btn-primary btn-sm">Send</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Set Alarm -->
+          <div class="block-card">
+            <div class="block-title">Set Alarm</div>
+            <form id="quick-alarm-form" class="inline-form">
+              <input type="time" id="quick-alarm-time" value="06:30" />
+              <button type="submit" class="btn btn-outline btn-sm">Set Alarm</button>
+            </form>
+            <p class="helper-text">Triggers the native Android Clock alarm directly on your paired device.</p>
+          </div>
         </div>
 
-        <!-- Tab Contents -->
-        <div class="tab-content active" id="tab-timeline">
-          <div id="commands-list" class="stack-list"></div>
+        <!-- Recent Commands & Approvals -->
+        <div class="section-header">
+          <h2>Recent Commands</h2>
+          <span class="muted-count" id="count-cmds">0</span>
+        </div>
+        <div id="commands-list" class="doc-list"></div>
+      </section>
+
+      <!-- PAGE 2: SCHEDULES -->
+      <section class="page" id="page-schedules">
+        <div class="page-header">
+          <div>
+            <h1>Schedules</h1>
+            <p class="page-desc">Run phone actions automatically at a time or after a delay.</p>
+          </div>
         </div>
 
-        <div class="tab-content" id="tab-schedules">
-          <div class="section-note">Background jobs run automatically on schedule via Jarvis Scheduler + Android WorkManager/AlarmManager.</div>
-          <div id="tasks-list" class="stack-list"></div>
+        <div class="block-card">
+          <div class="block-title">New Schedule</div>
+          <form id="schedule-form" class="stack-form">
+            <div class="inline-row">
+              <select id="sched-type" class="select-input">
+                <option value="daily">Every day at</option>
+                <option value="weekday">Every weekday at</option>
+                <option value="delay">Once in (minutes)</option>
+              </select>
+              <input type="time" id="sched-time" value="08:30" />
+              <input type="number" id="sched-minutes" min="1" max="1440" value="5" class="hidden" placeholder="Minutes" />
+            </div>
+            <div class="inline-form">
+              <input type="text" id="sched-prompt" placeholder="What should Jarvis do? e.g. Turn off Do Not Disturb and notify me Good morning" />
+              <button type="submit" class="btn btn-primary btn-sm">Add Schedule</button>
+            </div>
+          </form>
         </div>
 
-        <div class="tab-content" id="tab-rules">
-          <div class="section-note">Event rules watch phone telemetry &amp; Android NotificationListener events in real time.</div>
-          <div id="rules-list" class="stack-list"></div>
+        <div id="tasks-list" class="doc-list"></div>
+      </section>
+
+      <!-- PAGE 3: AUTOMATIONS -->
+      <section class="page" id="page-rules">
+        <div class="page-header">
+          <div>
+            <h1>Automations</h1>
+            <p class="page-desc">React automatically to incoming notifications, battery levels, or Wi-Fi changes.</p>
+          </div>
         </div>
 
-        <div class="tab-content" id="tab-vault">
-          <div class="section-note">Summaries and backups generated by Jarvis tasks, ready to sync with your Notion &amp; Google Drive connectors.</div>
-          <div id="vault-list" class="stack-list"></div>
+        <div class="block-card">
+          <div class="block-title">New Rule</div>
+          <form id="rule-form" class="stack-form">
+            <div class="inline-row">
+              <select id="rule-trigger" class="select-input">
+                <option value="whatsapp">When WhatsApp message arrives from</option>
+                <option value="battery">When battery drops below (%)</option>
+                <option value="wifi">When Wi-Fi connects to</option>
+              </select>
+              <input type="text" id="rule-cond-val" placeholder="Sender name (e.g. Mom)" />
+            </div>
+            <div class="inline-form">
+              <input type="text" id="rule-action" placeholder="Then do... e.g. auto-reply In a meeting, will call soon" />
+              <button type="submit" class="btn btn-primary btn-sm">Add Rule</button>
+            </div>
+          </form>
         </div>
 
-        <div class="tab-content" id="tab-logs">
-          <div id="logs-list" class="logs-terminal"></div>
+        <div id="rules-list" class="doc-list"></div>
+      </section>
+
+      <!-- PAGE 4: NOTES & VAULT -->
+      <section class="page" id="page-vault">
+        <div class="page-header">
+          <div>
+            <h1>Notes &amp; Vault</h1>
+            <p class="page-desc">Notification summaries and notes saved by Jarvis.</p>
+          </div>
+          <button type="button" class="btn btn-outline btn-sm" data-quick-cmd="Summarize unread notifications and save to Notion">
+            Summarize Notifications Now
+          </button>
+        </div>
+
+        <div id="vault-list" class="doc-list"></div>
+      </section>
+
+      <!-- PAGE 5: CONNECT PHONE -->
+      <section class="page" id="page-connect">
+        <div class="page-header">
+          <div>
+            <h1>Connect Android Phone</h1>
+            <p class="page-desc">Install the Jarvis APK on your phone so commands execute directly on your device.</p>
+          </div>
+        </div>
+
+        <div class="block-card highlight-card">
+          <div class="block-title">Step 1 — Download &amp; Install the APK</div>
+          <p class="helper-text">
+            Direct Android APK build (includes pre-filled Brain URL and Pairing Token). Open this page on your phone and tap below, or transfer the APK to your phone.
+          </p>
+          <div class="btn-row">
+            <a
+              class="btn btn-primary apk-download-link"
+              href="https://github.com/mr-saifali/Jarvis/releases/download/latest/jarvis-agent.apk"
+              download="jarvis-agent.apk"
+            >
+              &#11015; Download jarvis-agent.apk
+            </a>
+            <a class="btn btn-outline" href="https://github.com/mr-saifali/Jarvis/releases" target="_blank" rel="noopener">
+              GitHub Releases
+            </a>
+          </div>
+        </div>
+
+        <div class="block-card">
+          <div class="block-title">Step 2 — Pair with Your Brain</div>
+          <div class="kv-grid">
+            <div class="kv-row">
+              <span class="kv-label">Brain URL</span>
+              <code id="connect-origin"></code>
+              <button type="button" class="btn btn-ghost btn-xs" id="btn-copy-origin">Copy</button>
+            </div>
+            <div class="kv-row">
+              <span class="kv-label">Pairing Token</span>
+              <code id="connect-token"></code>
+              <button type="button" class="btn btn-ghost btn-xs" id="btn-copy-token">Copy</button>
+            </div>
+          </div>
+          <ol class="steps-ol">
+            <li>Open <strong>Jarvis Agent</strong> on your Android phone and tap <strong>Save &amp; Connect</strong>.</li>
+            <li>Grant <strong>Accessibility Service</strong> (for tapping/sending messages inside apps).</li>
+            <li>Grant <strong>Notification Access</strong>, <strong>Do Not Disturb</strong>, <strong>Modify Settings</strong>, and <strong>Unrestricted Battery</strong>.</li>
+          </ol>
+        </div>
+
+        <div class="block-card">
+          <div class="block-title">Alternative — Termux / MacroDroid Webhook</div>
+          <p class="helper-text">If you prefer testing via Termux or MacroDroid without installing the APK:</p>
+          <pre class="code-block" id="connect-curl"></pre>
         </div>
       </section>
 
-      <!-- Right: Live Android Device Simulator & Telemetry -->
-      <aside class="right-panel">
-        <div class="card phone-panel">
-          <div class="card-header">
-            <h2>Live Android Device Bridge</h2>
-            <select id="device-selector" class="select-sm"></select>
-          </div>
-
-          <!-- Interactive Virtual Android Phone -->
-          <div class="phone-frame" id="phone-frame">
-            <div class="phone-bezel">
-              <div class="phone-notch"></div>
-              <div class="phone-status-bar">
-                <span id="sim-clock">12:00</span>
-                <div class="phone-status-icons">
-                  <span id="sim-dnd-badge" class="mini-badge hidden">DND</span>
-                  <span id="sim-wifi-label">Wi-Fi</span>
-                  <span id="sim-bat-label">78%</span>
-                </div>
-              </div>
-
-              <!-- Screen brightness overlay -->
-              <div class="phone-screen" id="sim-screen">
-                <div class="brightness-veil" id="sim-brightness-veil"></div>
-
-                <!-- Lockscreen overlay -->
-                <div class="lockscreen-overlay hidden" id="sim-lockscreen">
-                  <div class="lock-icon">🔒</div>
-                  <div class="lock-time" id="sim-lock-time">12:00</div>
-                  <p>Device Locked</p>
-                  <small>UI-tap actions pause until unlocked; background &amp; cloud actions still run.</small>
-                  <button class="btn btn-sm btn-primary" id="btn-sim-unlock">Unlock Phone</button>
-                </div>
-
-                <!-- Active App Header -->
-                <div class="sim-app-header">
-                  <span class="app-pill" id="sim-app-name">Launcher</span>
-                  <span class="agent-badge" id="sim-agent-status">Accessibility Ready</span>
-                </div>
-
-                <!-- Dynamic App Screen -->
-                <div class="sim-screen-body" id="sim-screen-body">
-                  <div class="app-grid">
-                    <div class="app-tile" data-open="WhatsApp">WhatsApp</div>
-                    <div class="app-tile" data-open="Spotify">Spotify</div>
-                    <div class="app-tile" data-open="Settings">Settings</div>
-                    <div class="app-tile" data-open="Gmail">Gmail</div>
-                    <div class="app-tile" data-open="Clock">Clock</div>
-                    <div class="app-tile" data-open="Notion">Notion</div>
-                  </div>
-                </div>
-
-                <!-- Live Step Toast inside phone -->
-                <div class="sim-action-toast hidden" id="sim-action-toast"></div>
-
-                <!-- Android Nav Bar -->
-                <div class="phone-navbar">
-                  <button type="button" id="sim-btn-back" title="Back">&#9664;</button>
-                  <button type="button" id="sim-btn-home" title="Home">&#9679;</button>
-                  <button type="button" id="sim-btn-lock" title="Lock Screen">&#9632;</button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Telemetry & Event Triggers -->
-          <div class="sim-controls">
-            <div class="control-row">
-              <label>Battery: <strong id="ctrl-bat-val">78%</strong></label>
-              <input type="range" id="ctrl-battery" min="5" max="100" value="78" />
-            </div>
-            <div class="control-row">
-              <label>Brightness: <strong id="ctrl-bright-val">65%</strong></label>
-              <input type="range" id="ctrl-brightness" min="10" max="100" value="65" />
-            </div>
-            <div class="sim-btn-grid">
-              <button class="btn btn-sm btn-outline" id="btn-sim-low-bat">Drop Battery to 15%</button>
-              <button class="btn btn-sm btn-outline" id="btn-sim-whatsapp">Simulate WhatsApp (Mom)</button>
-              <button class="btn btn-sm btn-outline" id="btn-sim-wifi">Switch Wi-Fi: Office-5G</button>
-              <button class="btn btn-sm btn-outline" id="btn-sim-toggle-lock">Toggle Lock Screen</button>
-            </div>
+      <!-- PAGE 6: SETTINGS & LOGS -->
+      <section class="page" id="page-settings">
+        <div class="page-header">
+          <div>
+            <h1>Settings &amp; Logs</h1>
+            <p class="page-desc">Safety preferences, timezone, optional AI planner, and diagnostic logs.</p>
           </div>
         </div>
-      </aside>
+
+        <div class="block-card">
+          <form id="settings-form" class="stack-form">
+            <label class="field">
+              <span>Timezone (for daily &amp; weekday schedules)</span>
+              <input type="text" id="set-timezone" placeholder="Asia/Kolkata" />
+            </label>
+
+            <div class="divider"></div>
+            <div class="block-title">Optional External AI Model (OpenAI / Groq / OpenRouter)</div>
+            <p class="helper-text">Without an API key, Jarvis runs its fast built-in command planner.</p>
+
+            <label class="mini-switch">
+              <input type="checkbox" id="set-llm-enabled" />
+              <span>Enable External LLM Planner</span>
+            </label>
+
+            <label class="field">
+              <span>Chat Completions URL</span>
+              <input type="text" id="set-llm-url" placeholder="https://api.openai.com/v1/chat/completions" />
+            </label>
+
+            <label class="field">
+              <span>Model</span>
+              <input type="text" id="set-llm-model" placeholder="gpt-4o-mini" />
+            </label>
+
+            <label class="field">
+              <span>API Key</span>
+              <input type="password" id="set-llm-key" placeholder="sk-..." />
+            </label>
+
+            <div>
+              <button type="submit" class="btn btn-primary btn-sm">Save Settings</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Optional Virtual Simulator Test Tools (tucked away cleanly) -->
+        <details class="block-card">
+          <summary class="block-title clickable">Virtual Test Phone Tools (Optional)</summary>
+          <p class="helper-text" style="margin-top:8px;">
+            Simulate events on the built-in test device if your real Android phone is not paired yet.
+          </p>
+          <div class="btn-row" style="margin-top:10px;">
+            <button type="button" class="btn btn-outline btn-sm" id="btn-sim-whatsapp">Simulate WhatsApp from Mom</button>
+            <button type="button" class="btn btn-outline btn-sm" id="btn-sim-low-bat">Simulate Battery 15%</button>
+            <button type="button" class="btn btn-outline btn-sm" id="btn-sim-wifi">Simulate Wi-Fi: Office-5G</button>
+            <button type="button" class="btn btn-outline btn-sm" id="btn-sim-toggle-lock">Toggle Test Lock Screen</button>
+          </div>
+        </details>
+
+        <div class="section-header">
+          <h2>Activity Logs</h2>
+        </div>
+        <div id="logs-list" class="logs-box"></div>
+      </section>
     </main>
-  </div>
-
-  <!-- Modal: Connect Real Android Phone -->
-  <div class="modal-backdrop hidden" id="modal-connect">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h3>Connect Your Real Android Phone</h3>
-        <button class="close-btn" data-close="modal-connect">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p>Use <strong>either</strong> the included native Kotlin Android app (<code>android/</code>) <strong>or</strong> connect in 5 minutes via MacroDroid / Termux webhooks:</p>
-
-        <div class="info-box">
-          <div><strong>Server Endpoint:</strong> <code id="connect-origin"></code></div>
-          <div><strong>Pairing Token:</strong> <code id="connect-token"></code></div>
-        </div>
-
-        <h4>Option A: Native Kotlin Android Agent (Full Accessibility + Background Control)</h4>
-        <ol>
-          <li>Open <code>android/</code> in Android Studio (or push to GitHub to auto-build the APK via <code>.github/workflows/build-apk.yml</code>).</li>
-          <li>Install the APK on your phone and grant <strong>Accessibility Service</strong>, <strong>Notification Access</strong>, and <strong>Unrestricted Battery</strong>.</li>
-          <li>Paste the Server URL &amp; Pairing Token above into the Jarvis app.</li>
-        </ol>
-
-        <h4>Option B: Test Today with MacroDroid / Termux (No APK Build Needed)</h4>
-        <pre class="code-block" id="connect-curl"></pre>
-        <p class="small-muted">Note: For 24/7 phone access over mobile data, deploy <code>brain/</code> (or Vercel + Supabase using <code>supabase/schema.sql</code>) so your phone has a permanent public HTTPS URL.</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal: Brain Settings & LLM Config -->
-  <div class="modal-backdrop hidden" id="modal-settings">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h3>Jarvis Brain Settings</h3>
-        <button class="close-btn" data-close="modal-settings">&times;</button>
-      </div>
-      <form id="settings-form" class="modal-body">
-        <label class="field">
-          <span>Timezone (for Cron Schedules)</span>
-          <input type="text" id="set-timezone" placeholder="Asia/Kolkata" />
-        </label>
-
-        <div class="divider"></div>
-        <h4>Optional Live LLM Planner (OpenAI / Gemini / OpenRouter / Groq)</h4>
-        <p class="small-muted">Without an API key, Jarvis uses its fast built-in deterministic planner. Enable this for open-ended reasoning.</p>
-
-        <label class="toggle-chip">
-          <input type="checkbox" id="set-llm-enabled" />
-          <span>Enable External LLM Reasoning</span>
-        </label>
-
-        <label class="field">
-          <span>Chat Completions Base URL</span>
-          <input type="text" id="set-llm-url" placeholder="https://api.openai.com/v1/chat/completions" />
-        </label>
-
-        <label class="field">
-          <span>Model Name</span>
-          <input type="text" id="set-llm-model" placeholder="gpt-4o-mini" />
-        </label>
-
-        <label class="field">
-          <span>API Key (stored locally in brain/data/db.json)</span>
-          <input type="password" id="set-llm-key" placeholder="sk-..." />
-        </label>
-
-        <div class="modal-actions">
-          <button type="submit" class="btn btn-primary">Save Settings</button>
-        </div>
-      </form>
-    </div>
   </div>
 
   <script src="/app.js"></script>
