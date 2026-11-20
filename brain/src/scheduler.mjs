@@ -74,12 +74,14 @@ function matchCronField(expr, value) {
 }
 
 export function matchesCron(cronExpr, date = new Date(), timeZone = "Asia/Kolkata") {
+  return matchesCronParts(cronExpr, getZonedParts(date,timeZone));
+}
+
+export function matchesCronParts(cronExpr,parts) {
   if (!cronExpr) return false;
   const fields = String(cronExpr).trim().split(/\s+/);
   if (fields.length !== 5) return false;
   const [minF, hourF, domF, monthF, dowF] = fields;
-  const parts = getZonedParts(date, timeZone);
-
   return (
     matchCronField(minF, parts.minute) &&
     matchCronField(hourF, parts.hour) &&

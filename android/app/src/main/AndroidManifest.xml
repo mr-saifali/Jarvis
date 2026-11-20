@@ -58,6 +58,23 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".inbox.FollowActivity" android:label="Jarvis · Iska kaam bana" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
+        <activity android:name=".quick.QuickCommandActivity" android:exported="false"
+            android:excludeFromRecents="true" android:taskAffinity="${applicationId}.quick"
+            android:theme="@android:style/Theme.Material.Light.Dialog.NoActionBar" />
+        <service android:name=".quick.CommandTile" android:exported="true"
+            android:label="Ask Jarvis" android:icon="@drawable/ic_ask_jarvis"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+
         <!-- Accessibility UI Automation Service -->
         <service
             android:name=".service.JarvisAccessibilityService"
@@ -90,6 +107,8 @@
             android:foregroundServiceType="dataSync" />
 
         <!-- Auto-Start after Device Reboot -->
+        <receiver android:name=".worker.ReminderActions" android:exported="false" />
+
         <receiver
             android:name=".worker.BootReceiver"
             android:exported="true">

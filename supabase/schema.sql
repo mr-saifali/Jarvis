@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS public.jarvis_settings (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+ALTER TABLE public.jarvis_settings ADD COLUMN IF NOT EXISTS routines jsonb NOT NULL DEFAULT '[]'::jsonb;
+
 CREATE TABLE IF NOT EXISTS public.jarvis_devices (
   id text PRIMARY KEY,
   name text NOT NULL,

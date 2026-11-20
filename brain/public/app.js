@@ -353,7 +353,8 @@ async function sendCommand(prompt) {
       method: "POST",
       body: JSON.stringify({ prompt: trimmed, deviceId: state.selectedDeviceId })
     });
-    showToast(res.summary || "Sent to Jarvis");
+    $("#command-response").textContent = res.summary || "Sent to Jarvis";
+    showToast(res.kind === "briefing" ? "Briefing ready" : res.summary || "Sent to Jarvis");
     $("#command-input").value = "";
     await refreshState();
   } catch (err) {

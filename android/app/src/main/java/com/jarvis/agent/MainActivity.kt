@@ -98,6 +98,7 @@ fun JarvisScreen(config: JarvisConfig) {
     var brainUrl by remember { mutableStateOf(config.brainUrl) }
     var pairingToken by remember { mutableStateOf(config.pairingToken) }
     var voiceFeedback by remember { mutableStateOf(config.voiceFeedback) }
+    var section by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(if (config.pairingToken.isBlank()) "Setup" else "Ask") }
     var commandText by remember { mutableStateOf("") }
     var statusText by remember { mutableStateOf("Ready to connect") }
     var permTick by remember { mutableStateOf(0) }
@@ -123,8 +124,7 @@ fun JarvisScreen(config: JarvisConfig) {
                 JarvisLogStore.append("Voice heard: \"$spoken\"")
                 scope.launch {
                     try {
-                        JarvisApiClient(config).sendCommand(spoken)
-                        statusText = "Sent voice command: $spoken"
+                        statusText = JarvisApiClient(config).sendCommand(spoken).optString("summary", "Sent: $spoken")
                     } catch (e: Exception) {
                         statusText = "Voice send error: ${e.message}"
                     }
@@ -152,25 +152,37 @@ fun JarvisScreen(config: JarvisConfig) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item {
-            Text(
-                text = "J.A.R.V.I.S. Stark Core",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF38BDF8)
-            )
-            Text(
-                text = "ID: ${config.deviceId} • $statusText",
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFF8EA3C2)
-            )
+        item("header") {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("J A R V I S   /   PERSONAL ASSISTANT", style = MaterialTheme.typography.labelMedium, color = Color(0xFF79D9FF))
+                Text(when(section) { "Ask" -> "What do you need?"; "Desk" -> "Your workspace"; else -> "Connect your phone" },
+                    style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                Text(when(section) { "Ask" -> "Speak, type, or use a quick action."; "Desk" -> "Turn messages into tasks, keep notes and plan your time."; else -> "Pair the Brain first, then enable the permissions you need." },
+                    style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB3C5DA))
+                androidx.compose.material3.TabRow(selectedTabIndex = listOf("Ask", "Desk", "Setup").indexOf(section)) {
+                    listOf("Ask", "Desk", "Setup").forEach { name ->
+                        androidx.compose.material3.Tab(selected = section == name, onClick = { section = name }, text = { Text(name) })
+                    }
+                }
+            }
         }
-
+        if (section == "Desk") {
+            item("follow") {
+                Button(modifier = Modifier.fillMaxWidth(), onClick = { context.startActivity(Intent(context, com.jarvis.agent.inbox.FollowActivity::class.java)) }) {
+                    Text("Open follow-ups · Kya baaki hai?")
+                }
+            }
+            item("desk") { com.jarvis.agent.personal.DeskCard() }
+            item("writer") { com.jarvis.agent.personal.WriterCard() }
+        }
+        if (section == "Ask") item("result") {
+            Text(statusText, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB3C5DA))
+        }
         // Voice & Command Card
-        item {
+        if (section == "Ask") item("command") {
             Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF0E1522))) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Voice & Command HUD", fontWeight = FontWeight.SemiBold, color = Color.White)
+                    Text("Command centre", fontWeight = FontWeight.SemiBold, color = Color.White)
 
                     Button(
                         onClick = {
@@ -187,7 +199,7 @@ fun JarvisScreen(config: JarvisConfig) {
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
                     ) {
-                        Text("Speak to J.A.R.V.I.S. (Voice Command)", color = Color.White)
+                        Text("Speak to Jarvis", color = Color.White)
                     }
 
                     OutlinedTextField(
@@ -203,8 +215,8 @@ fun JarvisScreen(config: JarvisConfig) {
                             if (prompt.isNotEmpty()) {
                                 scope.launch {
                                     try {
-                                        JarvisApiClient(config).sendCommand(prompt)
-                                        JarvisLogStore.append("Dispatched: $prompt")
+                                        statusText = JarvisApiClient(config).sendCommand(prompt).optString("summary", "Sent: $prompt")
+                                        JarvisLogStore.append(statusText)
                                         commandText = ""
                                     } catch (e: Exception) {
                                         JarvisLogStore.append("Command error: ${e.message}")
@@ -212,7 +224,7 @@ fun JarvisScreen(config: JarvisConfig) {
                                 }
                             }
                         }) {
-                            Text("Execute")
+                            Text("Send command")
                         }
                         OutlinedButton(onClick = {
                             JarvisVoiceEngine.speak(context, "At your service, sir. All systems are online.")
@@ -251,10 +263,12 @@ fun JarvisScreen(config: JarvisConfig) {
             }
         }
 
+        if (section == "Ask") item("tile-tip") { Text("Tip: add Ask Jarvis in Quick Settings to send commands from another app.", color = Color(0xFFB3C5DA)) }
         // Cloud Brain Pairing Card
-        item {
+        if (section == "Setup") item("pair") {
             Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF0E1522))) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Phone ID: ${config.deviceId} · $statusText", style = MaterialTheme.typography.bodySmall, color = Color(0xFFB3C5DA))
                     Text("Cloud Brain Connection", fontWeight = FontWeight.SemiBold, color = Color.White)
                     OutlinedTextField(
                         value = brainUrl,
@@ -267,6 +281,7 @@ fun JarvisScreen(config: JarvisConfig) {
                         value = pairingToken,
                         onValueChange = { pairingToken = it },
                         label = { Text("Pairing Token") },
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -309,7 +324,7 @@ fun JarvisScreen(config: JarvisConfig) {
         }
 
         // Permissions Card
-        item {
+        if (section == "Setup") item("permissions") {
             Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF0E1522))) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("All Android Permissions", fontWeight = FontWeight.SemiBold, color = Color.White)
@@ -364,12 +379,12 @@ fun JarvisScreen(config: JarvisConfig) {
             }
         }
 
-        item {
-            Text("Live Agent Telemetry", fontWeight = FontWeight.SemiBold, color = Color.White)
+        if (section == "Setup") item("telemetry") {
+            Text("Recent activity", fontWeight = FontWeight.SemiBold, color = Color.White)
             Spacer(modifier = Modifier.height(4.dp))
         }
 
-        items(logs) { line ->
+        if (section == "Setup") items(logs) { line ->
             Text(
                 text = line,
                 color = Color(0xFF34D399),
