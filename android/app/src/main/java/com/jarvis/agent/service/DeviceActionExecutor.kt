@@ -36,7 +36,7 @@ class DeviceActionExecutor(private val context: Context) {
         private const val ALERT_CHANNEL = "jarvis_alerts"
     }
 
-    suspend fun executeActions(actions: JSONArray, speakResult: Boolean = false): Pair<String, JSONArray> {
+    suspend fun executeActions(actions: JSONArray, speakResult: Boolean = false, silent: Boolean = false): Pair<String, JSONArray> {
         val resultActions = JSONArray()
         val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
         var blocked = 0
@@ -74,7 +74,7 @@ class DeviceActionExecutor(private val context: Context) {
         }
 
         val config = JarvisConfig(context)
-        if ((speakResult || config.voiceFeedback) && !spokeExplicitly && executed > 0 && lastLabel.isNotBlank()) {
+        if (!silent && (speakResult || config.voiceFeedback) && !spokeExplicitly && executed > 0 && lastLabel.isNotBlank()) {
             JarvisVoiceEngine.speak(context, "Done, sir. $lastLabel")
         }
 

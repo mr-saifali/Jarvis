@@ -624,18 +624,18 @@ export function planDeterministic(prompt, now = new Date()) {
   };
 }
 
-export async function planCommand(prompt, llmConfig = null, now = new Date()) {
+export async function planCommand(prompt, llmConfig = null, now = new Date(), forceWorkflow = false) {
   const deterministic = planDeterministic(prompt, now);
+  if (forceWorkflow && !process.env.GEMINI_API_KEY) throw Object.assign(new Error("Workflow planner is not configured. Nothing was queued."),{status:400});
 
   // Only send unresolved immediate commands to the managed Flash endpoint. Known
   // routines, schedules and deterministic actions need no round trip or quota.
   if (process.env.GEMINI_API_KEY) {
-    if (deterministic.kind !== "command") return deterministic;
-    const multi = compoundRequest(prompt);
+    if (!forceWorkflow && deterministic.kind !== "command") return deterministic;
+    const multi = forceWorkflow || compoundRequest(prompt);
     if (!multi && !deterministic.actions.some(a => a.label?.startsWith("Execute intent:"))) return deterministic;
     const unavailable = () => {
-      if (multi) throw Object.assign(new Error("Workflow planner unavailable. Nothing was queued; try again or send individual commands."), {status:400});
-      return deterministic;
+      throw Object.assign(new Error("Gemini planner unavailable. Nothing was queued; try again or use a built-in command."), {status:400});
     };
     try {
       const model = process.env.GEMINI_FLASH_MODEL || "gemini-2.5-flash";
@@ -644,19 +644,19 @@ export async function planCommand(prompt, llmConfig = null, now = new Date()) {
         method: "POST", redirect: "error", signal: AbortSignal.timeout(8000),
         headers: {"Content-Type":"application/json", "x-goog-api-key":process.env.GEMINI_API_KEY},
         body: JSON.stringify({
-          systemInstruction: {parts:[{text:multi ? workflowInstruction : "Translate this Hindi, Hinglish or English phone request into a single clear English imperative for a deterministic Android command parser. Keep names, numbers and message text intact. Do not add actions. Return JSON with one string field command. If ambiguous or not an Android command, return an empty command."}]},
+          systemInstruction: {parts:[{text:multi ? workflowInstruction : workflowInstruction.replace("Use 2–8 steps.", "Use 1–8 steps. Do not add steps to a single-action request.")}]},
           contents: [{role:"user",parts:[{text:prompt}]}],
-          generationConfig: {temperature:0.1,responseMimeType:"application/json",...(multi ? {responseSchema:workflowSchema} : {})}
+          generationConfig: {temperature:0.1,responseMimeType:"application/json",responseSchema:workflowSchema}
         })
       });
-      if (!res.ok) return unavailable();
+      if (!res.ok) {
+        const reason = res.status === 429 ? "Gemini quota or rate limit reached" : [401,403].includes(res.status) ? "Gemini rejected the server credential" : res.status === 404 ? "Configured Gemini model not available" : `Gemini returned HTTP ${res.status}`;
+        throw Object.assign(new Error(`${reason}. Nothing was queued.`), {status:400});
+      }
       const data = await res.json();
       const payload = JSON.parse(data.candidates?.[0]?.content?.parts?.map(p=>p.text || "").join("") || "{}");
-      if (multi) return validateWorkflow(payload);
-      const {command} = payload;
-      if (typeof command !== "string" || !command.trim() || command.length > 1500) return deterministic;
-      const translated = planDeterministic(command, now);
-      return translated.kind === "command" && !translated.actions.some(a=>a.label?.startsWith("Execute intent:")) ? translated : deterministic;
+      const plan = validateWorkflow(payload, multi ? 2 : 1);
+      return {...plan, summary:`Gemini Flash · ${plan.summary}`};
     } catch (err) { if (err.status===400) throw err; return unavailable(); }
   }
 

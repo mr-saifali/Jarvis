@@ -178,6 +178,7 @@ fun JarvisScreen(config: JarvisConfig) {
         if (section == "Ask") item("result") {
             Text(statusText, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB3C5DA))
         }
+        if (section == "Ask") item("mission-deck") { com.jarvis.agent.personal.MissionDeck() }
         // Voice & Command Card
         if (section == "Ask") item("command") {
             Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF0E1522))) {
@@ -219,7 +220,8 @@ fun JarvisScreen(config: JarvisConfig) {
                                         JarvisLogStore.append(statusText)
                                         commandText = ""
                                     } catch (e: Exception) {
-                                        JarvisLogStore.append("Command error: ${e.message}")
+                                        statusText = "Command error: ${e.message}"
+                                        JarvisLogStore.append(statusText)
                                     }
                                 }
                             }

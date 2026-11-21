@@ -73,10 +73,12 @@ export async function assistantPlan(store, settings, prompt, source, now = new D
   const run = prompt.match(/^(?:run|chalao)\s+(.+)$/i);
   const routine = routines.find(r=>r.name===fold(run?.[1] || prompt));
   if (routine) return {kind:'command',summary:`Routine: ${routine.name}`, actions:routine.actions};
-  if (run) throw problem(`Unknown routine: ${run[1]}`);
+  if (run && !process.env.GEMINI_API_KEY) throw problem(`Unknown routine: ${run[1]}`);
   if (process.env.GEMINI_API_KEY && compoundRequest(prompt)) return null;
   const mapped=translated(prompt);
-  return mapped!==prompt ? planDeterministic(mapped,now) : null;
+  if (mapped === prompt) return null;
+  const local = planDeterministic(mapped,now);
+  return local.actions.some(a=>a.label?.startsWith("Execute intent:")) ? null : local;
 }
 
 export async function dailyBriefing(store, device, zone, now = new Date()) {

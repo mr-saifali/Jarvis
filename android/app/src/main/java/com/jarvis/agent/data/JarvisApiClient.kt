@@ -41,6 +41,10 @@ class JarvisApiClient(private val config: JarvisConfig) {
                 config.pairingResult(generation, false)
                 throw PairingRequired()
             }
+            if (code == 400 && path == "/api/command") {
+                val reason = runCatching { conn.errorStream?.bufferedReader()?.use { JSONObject(it.readText()).optString("error") } }.getOrNull()
+                throw IllegalArgumentException(reason?.take(240)?.takeIf { it.isNotBlank() } ?: "Command not accepted")
+            }
             if (code !in 200..299) throw RuntimeException("HTTP $code")
             val text = BufferedReader(InputStreamReader(conn.inputStream)).use { it.readText() }
             val response = if (text.isBlank()) JSONObject() else JSONObject(text)
