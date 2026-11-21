@@ -56,7 +56,8 @@ class QuickCommandActivity : ComponentActivity() {
                                             "queued" -> "Queued for this phone. Check history for completion."
                                             else -> reply.optString("summary", "Submitted.")
                                         }; text=""
-                                    } catch (_: Exception) { result="Submission not confirmed. Check command history before retrying." }
+                                    } catch (e: IllegalArgumentException) { result=e.message ?: "Command not accepted." }
+                                    catch (_: Exception) { result="Submission not confirmed. Check command history before retrying." }
                                     finally { busy=false }
                                 }
                             }

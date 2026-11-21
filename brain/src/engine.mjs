@@ -1,3 +1,4 @@
+import {parseWorkflow, selectBranch} from './conditional-workflow.mjs';
 import {parseLibraryCommand,applyLibraryCommand} from './automation-library.mjs';
 /**
  * J.A.R.V.I.S. Execution Engine (Simulator + Cloud Vault + Scheduler + Event Rules)
@@ -207,8 +208,17 @@ export async function dispatchCommand(store, { prompt, deviceId = "auto", source
     const target = recipe.verb === 'list' ? null : await resolveTargetDevice(store,deviceId);
     return applyLibraryCommand(store,recipe,target?.id);
   }
-  const builtin = await assistantPlan(store, settings, prompt, source);
-  const plan = builtin || await planCommand(prompt, settings.llm_config);
+  const flow = parseWorkflow(prompt);
+  let workflowPlan;
+  if (flow) {
+    const target = await resolveTargetDevice(store, deviceId);
+    deviceId = target.id;
+    const branch = selectBranch(flow, target);
+    if (!branch) return {kind:"workflow",summary:"Condition not met. No actions queued."};
+    workflowPlan = await planCommand(branch, settings.llm_config, new Date(), true);
+  }
+  const builtin = !flow && await assistantPlan(store, settings, prompt, source);
+  const plan = workflowPlan || builtin || await planCommand(prompt, settings.llm_config);
   if (plan.kind === "routine") return plan;
   if (builtin?.kind === "briefing") {
     const device = await resolveTargetDevice(store, deviceId);

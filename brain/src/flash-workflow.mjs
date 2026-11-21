@@ -1,12 +1,12 @@
 // The model selects operations; the server supplies labels, permission gates and
 // execution policy. Never trust model-generated device actions or status fields.
-export const compoundRequest = text => /;|\b(?:and then|then|and|aur|phir|fir)\b|और|फिर/iu.test(text);
+export const compoundRequest = text => /;|[,\n]\s*(?:open|set|turn|start|pause|play|next|notify|brightness|volume|timer|dnd|flashlight)\b|\b(?:and then|then|and|aur|phir|fir)\b|और|फिर/iu.test(text);
 const tools = ['set_dnd','set_flashlight','set_brightness','set_volume','open_app','set_timer','notify','open_settings','media_control','set_alarm'];
 export const workflowInstruction = `Plan ALL parts of this immediate phone request in their original order. Use 2–8 steps. Each step has exactly two string fields: tool and value. Supported tools: set_dnd and set_flashlight (on/off), set_brightness (5–100 percent, digits only), set_volume (0–100 percent, digits only), open_app (app name), set_timer (seconds), notify (literal notification text), open_settings (wifi/bluetooth/sound/battery: open a settings screen only, never claim to toggle), media_control (play/pause/next/previous), set_alarm (absolute local time in 24h HH:MM). Never invent a missing duration, level, recipient or action. Do not substitute notify for sending a message. If any part is unsupported, ambiguous, conditional, scheduled or not requested, return an empty steps array. Return JSON only.`;
 export const workflowSchema = {type:'OBJECT',required:['steps'],properties:{steps:{type:'ARRAY',items:{type:'OBJECT',required:['tool','value'],properties:{tool:{type:'STRING',enum:tools},value:{type:'STRING'}}}}}};
-export function validateWorkflow(data) {
+export function validateWorkflow(data, minSteps = 2) {
   const invalid = () => { throw Object.assign(new Error('Cannot safely plan every step. Nothing was queued. Specify each app, setting or timer separately.'),{status:400}); };
-  if (!Array.isArray(data?.steps) || data.steps.length < 2 || data.steps.length > 8) invalid();
+  if (!Array.isArray(data?.steps) || data.steps.length < minSteps || data.steps.length > 8) invalid();
   const actions = data.steps.map(step => {
     if (!step || Object.keys(step).length !== 2 || !tools.includes(step.tool) || typeof step.value !== 'string') invalid();
     const type=step.tool, value=step.value.trim();
